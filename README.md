@@ -197,20 +197,48 @@ SQL statement that performs it. A request for a record in another club returns
 
 ## Implementation status
 
-Milestone 4 covers Use Cases 1 and 2 end to end.
+The Milestone 4 preliminary release. All 17 functions in the milestone slice are
+built, plus six beyond it.
 
 **Built**
 
-- Database schema, all tables, append-only ledger and audit log
-- Authentication, sessions, lockout, audit trail
+- Database schema, nine migrations, append-only ledger and audit log
+- Authentication, sessions, lockout, full audit trail
 - Tenancy filter and role-based access control
-- Sign-in, club selection, home page
+- Member register, registration with catch-up preview, role assignment
+- Contribution cycles, capture, status resolution, the overpayment waterfall
+- Automatic late penalties
+- Club ledger and member statements
+- Platform administration: provisioning, suspension, aggregate figures
+- Home page, sign-in, club selector, dashboard
 
 **Scheduled**
 
-- Members and contributions (Use Case 2 screens)
-- Ledger, statements, dashboard
-- Payouts, rotating queue, burial claims (Use Cases 3 and 4)
-- Reconciliation, governance, assistant (Use Cases 5, 6, 7)
-- REQ-3, federated sign-in. Deliberately not shown on the sign-in page until it
+- Payouts and the rotating queue (Use Case 3)
+- Burial claims (Use Case 4)
+- Reconciliation (Use Case 5)
+- Assistant (Use Case 6)
+- Governance: meetings, quorum, resolutions (Use Case 7)
+- Notifications, defaulter pipeline, ledger export
+- REQ-3 federated sign-in. Deliberately not shown on the sign-in page until it
   works — a button that does nothing is worse than no button.
+
+See `docs/traceability.md` for the requirement-by-requirement record.
+
+---
+
+## Tests
+
+```bash
+npm test       # 53 tests, no database required
+npm run check  # verifies every relative import resolves
+```
+
+The tests cover the rules engine, the permission matrix, monetary arithmetic and
+password storage. They need no database and no network — the rules are pure
+functions, so they are testable in isolation, which is what SRS 5.4 asks for
+under Testability.
+
+`npm run check` walks every `require()` in `server/src` and reports any that do
+not resolve. A wrong relative path otherwise only surfaces when Node reaches
+that line, which can be long after startup.

@@ -186,3 +186,114 @@ approved prototype are carried over unchanged.
 both succeed, and every subsequent contribution would be captured against an
 ambiguous cycle. A check in the service layer does not close that window; a
 unique index does.
+
+---
+
+## 11. Payment methods corrected to match REQ-51
+
+**Migration 005** defined the payment method enum as
+`{Cash, Electronic funds transfer, Debit order}`.
+
+**REQ-51** names `{Cash, Electronic funds transfer, Other}`.
+
+**Delivered:** migration 009 rebuilds the type. This was a straightforward
+defect: a club receiving a cheque or a postal order had nothing to record it as,
+and "Debit order" is not a method any of the three seeded clubs actually uses.
+
+A value cannot be removed from a PostgreSQL enum, so the column is widened to
+text, the type dropped and recreated, rows remapped, and the column narrowed
+again — all inside the migration's transaction.
+
+---
+
+## 12. REQ-43 gave register and amend to the Secretary alone
+
+**REQ-43** permits *the Secretary or the Chairperson* to register a member,
+amend a record and assign a role.
+
+The first version of `rules/permissions.js` gave `member.register` and
+`member.amend` to the Secretary only. Corrected, and now asserted in
+`tests/rules.test.js` so it cannot regress.
+
+---
+
+## 13. REQ-21 was implemented backwards
+
+**REQ-21:** a suspended club refuses all write operations *while continuing to
+permit members read access to their own historical records*.
+
+The first version of `middleware/tenancy.js` refused everything.
+
+**Delivered:** only non-GET methods are refused. Suspension is an administrative
+sanction against the club; it is not grounds for withholding from a member the
+record of money they have already paid in.
+
+---
+
+## 14. The late penalty attaches to having been late, not to the closing status
+
+**REQ-56:** post the penalty automatically upon the status resolving to Late.
+
+The first implementation tested the status *after* the capture. A member who let
+the deadline pass and then paid in full resolved straight to Paid and escaped
+the penalty entirely — which is precisely the person the rule exists for.
+
+**Delivered:** the penalty is decided from the member's position *before* the
+payment is applied. Paying late in full still incurs it; paying in two
+instalments incurs it once, enforced by the unique index in migration 009 rather
+than by a check in the service, so two simultaneous captures cannot fine a
+member twice.
+
+A member who never pays at all is not reached by any capture. Their penalty is
+levied when the cycle closes, which arrives with `closeCycle()`. Until then
+their status still *reads* as Late everywhere, because it is recomputed on read.
+
+---
+
+## 15. The member statement runs oldest-first; the club ledger runs newest-first
+
+**REQ-94** requires chronological order and a running balance, without saying
+which direction.
+
+**Delivered:** the club ledger is newest-first, because a treasurer opens it to
+see what happened today. The member statement is oldest-first, because a person
+reading their own history reads it forward.
+
+The statement's running total is also computed from the member's own entries
+rather than read from `ledger_entry.resulting_balance`. That column tracks the
+*club pool*; showing it on a personal statement would tell a member the club's
+balance and call it theirs.
+
+---
+
+## 16. The platform administrator sees three numbers and no breakdown
+
+**REQ-20** requires aggregate statistics "without disclosing any club-level or
+member-level detail".
+
+**Delivered:** the administrator's screen shows the club count, the member count
+and total funds under administration. There is no per-club financial figure
+anywhere in the response — an administrator who could see per-club balances could
+infer a great deal about a club's affairs without ever opening its ledger.
+
+The club list carries name, type, status, town and member count, because REQ-18
+requires the administrator to suspend a *named* club and that is impossible
+without a list of names. The list stops at the point money begins.
+
+---
+
+## 17. A seeded record must survive the system's own rules
+
+Not a requirement; a principle worth recording because it caught two defects.
+
+The first seed invented identity numbers that failed the Luhn check the
+registration form applies, and wrote ledger entries whose running balance did
+not reconcile when read in date order.
+
+Both would have been visible in the demonstration: a system rejecting data it
+had itself created, and a book whose balance column jumps — which is exactly the
+tamper signal that column exists to give.
+
+**Delivered:** the seed recomputes each identity number's check digit, and writes
+ledger entries in date order with distinct timestamps so the running balance
+reconciles under any stable sort.

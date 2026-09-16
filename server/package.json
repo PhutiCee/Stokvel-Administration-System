@@ -4,7 +4,9 @@
   "private": true,
   "description": "Stokvel Administration System — application tier (Node.js, Express, PostgreSQL)",
   "main": "src/index.js",
-  "engines": { "node": ">=18.17" },
+  "engines": {
+    "node": ">=18.17"
+  },
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
@@ -13,7 +15,9 @@
     "migrate:reset": "node src/db/migrate.js reset",
     "seed": "node src/db/seed.js",
     "db:rebuild": "npm run migrate:reset && npm run seed",
-    "test": "node --test tests/"
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "check": "node check-imports.js"
   },
   "dependencies": {
     "cookie-parser": "1.4.6",

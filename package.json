@@ -12,12 +12,14 @@
   },
   "scripts": {
     "dev:api": "node server/src/index.js",
-    "dev:web": "npm run dev --workspace=@sas/web",
-    "build": "npm run build --workspace=@sas/web",
+    "dev:web": "cd web && npx next dev",
+    "build": "cd web && npx next build",
     "migrate": "node server/src/db/migrate.js up",
     "migrate:status": "node server/src/db/migrate.js status",
     "migrate:reset": "node server/src/db/migrate.js reset",
     "seed": "node server/src/db/seed.js",
-    "db:rebuild": "npm run migrate:reset && npm run seed"
+    "db:rebuild": "npm run migrate:reset && npm run seed",
+    "test": "cd server && node --test",
+    "check": "node server/check-imports.js"
   }
 }
