@@ -233,11 +233,10 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Honest about what is not built yet, rather than showing a dead link. */}
       <p className="mt-8 text-[13px] text-ink-500 leading-relaxed">
-        Contributions, the ledger and payouts are being built. Your role in this club is{" "}
-        <strong className="font-medium text-ink-700">{role}</strong>, which determines what appears
-        in the navigation above.
+        Your role in this club is{" "}
+        <strong className="font-medium text-ink-700">{role}</strong>, which decides what appears in
+        the navigation above. Payouts, reconciliation and governance are still to come.
       </p>
     </>
   );

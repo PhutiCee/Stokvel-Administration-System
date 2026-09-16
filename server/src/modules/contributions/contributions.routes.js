@@ -9,13 +9,15 @@
  *   GET  /api/cycles/:cycleId
  *   POST /api/contributions/:id/capture captureContribution()
  *
+ * The ledger has its own module, because a ledger entry outlives the
+ * contribution that caused it and is written by payouts and reversals too.
+ *
  * Both routers are exported from one file because they are one workflow: a
  * cycle exists to be paid into, and a contribution has no meaning without one.
  */
 
 const express = require("express");
 const service = require("./contributions.service");
-const ledger = require("../ledger/ledger.service");
 const { requireClubContext } = require("../../middleware/tenancy");
 const { authorize } = require("../../middleware/authorize");
 const { asyncRoute } = require("../../middleware/errors");
@@ -73,32 +75,4 @@ contributions.post("/:contributionId/capture", authorize("contribution.capture")
     })
 );
 
-// --- /api/ledger -----------------------------------------------------------
-const ledgerRouter = express.Router();
-ledgerRouter.use(requireClubContext);
-
-ledgerRouter.get("/", authorize("view.ledger"), asyncRoute(async (req, res) => {
-    const [entries, balance] = await Promise.all([
-        ledger.listEntries(req.db, { limit: Number(req.query.limit) || 100 }),
-        ledger.getPoolBalance(req.db)
-    ]);
-    res.json({
-        entries: entries.map((e) => ({
-            entryId: e.entry_id,
-            entryType: e.entry_type,
-            amount: e.amount,
-            resultingBalance: e.resulting_balance,
-            description: e.description,
-            reference: e.reference,
-            reversesId: e.reverses_id,
-            reason: e.reason,
-            postedAt: e.posted_at,
-            postedByName: e.posted_by_name,
-            memberName: e.member_name
-        })),
-        poolBalance: balance.balance,
-        entryCount: balance.entryCount
-    });
-}));
-
-module.exports = { cycles, contributions, ledger: ledgerRouter };
+module.exports = { cycles, contributions };

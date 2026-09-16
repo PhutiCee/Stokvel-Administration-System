@@ -124,7 +124,18 @@ export const contributions = {
 };
 
 export const ledger = {
-  list: (limit = 100, opts) => api.get(`/api/ledger?limit=${limit}`, opts)
+  list: (limit = 100, opts) => api.get(`/api/ledger?limit=${limit}`, opts),
+  pool: (opts) => api.get("/api/ledger/pool", opts),
+  /** REQ-94. Omit memberId for your own. */
+  statement: (memberId, opts) =>
+    api.get(memberId ? `/api/ledger/statement/${memberId}` : "/api/ledger/statement", opts)
+};
+
+export const platform = {
+  overview: (opts) => api.get("/api/platform", opts),
+  createClub: (details) => api.post("/api/platform/clubs", details),
+  suspend: (clubId, reason) => api.patch(`/api/platform/clubs/${clubId}`, { status: "Suspended", reason }),
+  reinstate: (clubId) => api.patch(`/api/platform/clubs/${clubId}`, { status: "Active" })
 };
 
 // --- Use Case 1 ------------------------------------------------------------

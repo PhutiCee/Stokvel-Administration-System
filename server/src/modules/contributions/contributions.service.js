@@ -278,6 +278,19 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
 
     const receiptDate = input.receiptDate ? iso(input.receiptDate) : iso(new Date());
 
+    // REQ-56 attaches the penalty to HAVING BEEN late, so it is decided from the
+    // member's position BEFORE this payment, not after it.
+    //
+    // Keying it to the post-capture status was a defect: a member who let the
+    // deadline pass and then paid in full would resolve straight to Paid and
+    // escape the penalty, which is precisely the person the rule exists for.
+    const statusBefore = resolveStatus({
+        expected: existing.expected_amount,
+        captured: existing.captured_amount,
+        dueDate: existing.due_date,
+        graceDays
+    });
+
     const result = await withClubTransaction(db.clubId, async (tx, client) => {
         const newCapturedCents = alreadyCents + appliedCents;
 
@@ -320,11 +333,16 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
             });
         }
 
-        // REQ-56: if this capture still leaves the member Late, the penalty is
-        // posted now, once only. The unique index makes a repeat impossible
-        // even under a race.
+        // REQ-56, posted once only. The unique index from migration 009 makes a
+        // repeat impossible even when two captures race.
+        //
+        // A member who never pays at all is not reached here, because nothing
+        // triggers a capture for them. Their penalty is levied when the cycle
+        // closes — closeCycle() sweeps the unpaid and is scheduled for the next
+        // sprint. Until then their status still READS as Late everywhere,
+        // because it is recomputed on every read.
         let penalty = null;
-        if (penaltyIsDue(status) && penaltyCents > 0) {
+        if (penaltyIsDue(statusBefore) && penaltyCents > 0) {
             penalty = await repo.levyPenalty(tx, {
                 memberId: existing.member_id,
                 cycleId: existing.cycle_id,

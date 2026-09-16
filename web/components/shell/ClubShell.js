@@ -16,16 +16,20 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, Users, Receipt, BookOpen, ChevronDown, LogOut, ArrowLeftRight, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText } from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
 import { cx, initials } from "@/lib/format";
 
+// Ordered by how often each is opened, not by importance. "My statement" sits
+// among them rather than tucked under an account menu, because for an ordinary
+// member it is the only page they came for.
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view.dashboard" },
+  { href: "/contributions", label: "Contributions", icon: Receipt, permission: "view.dashboard" },
   { href: "/members", label: "Members", icon: Users, permission: "view.members" },
-  { href: "/contributions", label: "Contributions", icon: Receipt, permission: "contribution.capture" },
+  { href: "/statement", label: "My statement", icon: FileText, permission: "view.ownStatement" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" }
 ];
 

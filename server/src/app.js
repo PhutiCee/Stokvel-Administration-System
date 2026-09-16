@@ -33,6 +33,8 @@ const authRoutes = require("./modules/auth/auth.routes");
 const clubRoutes = require("./modules/clubs/clubs.routes");
 const memberRoutes = require("./modules/members/members.routes");
 const contributionRoutes = require("./modules/contributions/contributions.routes");
+const ledgerRoutes = require("./modules/ledger/ledger.routes");
+const platformRoutes = require("./modules/platform/platform.routes");
 
 function createApp() {
     const app = express();
@@ -73,7 +75,8 @@ function createApp() {
     app.use("/api/members", memberRoutes);
     app.use("/api/cycles", contributionRoutes.cycles);
     app.use("/api/contributions", contributionRoutes.contributions);
-    app.use("/api/ledger", contributionRoutes.ledger);
+    app.use("/api/ledger", ledgerRoutes);
+    app.use("/api/platform", platformRoutes);
 
     // 7, 8.
     app.use(notFoundHandler);

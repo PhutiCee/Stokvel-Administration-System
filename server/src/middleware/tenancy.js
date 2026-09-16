@@ -49,10 +49,21 @@ function requireClubContext(req, res, next) {
         return next(new Forbidden("You are not a member of this club."));
     }
 
-    if (req.actor.clubStatus === "Suspended") {
+    // REQ-21: a suspended club refuses all WRITE operations, while its members
+    // keep read access to their own historical records.
+    //
+    // An earlier version of this file refused everything, which was a defect
+    // against the requirement. Suspension is an administrative sanction against
+    // the club; it is not grounds for withholding from a member the record of
+    // money they have already paid in.
+    const isWrite = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+    if (req.actor.clubStatus === "Suspended" && isWrite) {
+        req.audit("tenancy.suspendedClubWrite", "Refused", {
+            detail: `${req.actor.fullName} attempted ${req.method} ${req.originalUrl} on a suspended club`
+        });
         return next(new Forbidden(
-            "This club is suspended. Records are readable by the Platform " +
-            "Administrator only until it is reinstated."
+            "This club is suspended, so nothing can be changed until it is reinstated. " +
+            "You can still read your own records."
         ));
     }
 
