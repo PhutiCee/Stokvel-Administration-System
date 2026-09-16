@@ -104,7 +104,9 @@ async function main() {
             console.error(`  Unknown command "${command}". Use up, status or reset.`);
             process.exit(1);
         }
-    } catch {
+    } catch (err) {
+        console.error(`\n  Migration failed: ${err.message}`);
+        if (err.code) console.error(`  PostgreSQL code: ${err.code}`);
         process.exit(1);
     } finally {
         await pool.end();

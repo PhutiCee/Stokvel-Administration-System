@@ -3,38 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "description": "Stokvel Administration System — SCSC082 Software Engineering, Group 5, University of Limpopo",
-  "workspaces": ["server", "web"],
-  "engines": { "node": ">=18.17" },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
   "scripts": {
-<<<<<<< Updated upstream
-    "dev": "npm run dev --workspace=@sas/server & npm run dev --workspace=@sas/web",
-    "dev:api": "npm run dev --workspace=@sas/server",
+    "dev:api": "node server/src/index.js",
     "dev:web": "npm run dev --workspace=@sas/web",
     "build": "npm run build --workspace=@sas/web",
-    "migrate": "npm run migrate --workspace=@sas/server",
-    "migrate:status": "npm run migrate:status --workspace=@sas/server",
-    "seed": "npm run seed --workspace=@sas/server",
-    "db:rebuild": "npm run db:rebuild --workspace=@sas/server",
-    "test": "npm run test --workspace=@sas/server"
-=======
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "lucide-react": "^1.26.0",
-    "next": "16.2.11",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "recharts": "^3.10.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.11",
-    "tailwindcss": "^4"
->>>>>>> Stashed changes
+    "migrate": "node server/src/db/migrate.js up",
+    "migrate:status": "node server/src/db/migrate.js status",
+    "migrate:reset": "node server/src/db/migrate.js reset",
+    "seed": "node server/src/db/seed.js",
+    "db:rebuild": "npm run migrate:reset && npm run seed"
   }
-  
 }

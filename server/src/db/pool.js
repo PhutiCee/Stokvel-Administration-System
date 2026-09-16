@@ -7,7 +7,14 @@
  * application tier"). Do not create a Client anywhere else.
  */
 
+const dns = require("dns");
 const { Pool, types } = require("pg");
+
+// Node 17+ returns DNS results in resolver order and will often attempt IPv6
+// first. Supabase's pooler publishes IPv6 records that are unroutable on many
+// South African networks and on most VPNs, so the connection hangs until the
+// timeout expires rather than failing fast. Force IPv4.
+dns.setDefaultResultOrder("ipv4first");
 const { env } = require("../config/env");
 
 // ---------------------------------------------------------------------------
@@ -27,7 +34,7 @@ const pool = new Pool({
     ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
     max: env.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 30_000,
     application_name: "stokvel-admin-system"
 });
 

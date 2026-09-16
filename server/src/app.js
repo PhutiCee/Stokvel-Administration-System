@@ -30,6 +30,9 @@ const { notFoundHandler, errorHandler, asyncRoute } = require("./middleware/erro
 const { healthcheck } = require("./db/pool");
 
 const authRoutes = require("./modules/auth/auth.routes");
+const clubRoutes = require("./modules/clubs/clubs.routes");
+const memberRoutes = require("./modules/members/members.routes");
+const contributionRoutes = require("./modules/contributions/contributions.routes");
 
 function createApp() {
     const app = express();
@@ -66,6 +69,11 @@ function createApp() {
 
     // 6. Feature routes. Others are mounted here as each step lands.
     app.use("/api/auth", authRoutes);
+    app.use("/api/club", clubRoutes);
+    app.use("/api/members", memberRoutes);
+    app.use("/api/cycles", contributionRoutes.cycles);
+    app.use("/api/contributions", contributionRoutes.contributions);
+    app.use("/api/ledger", contributionRoutes.ledger);
 
     // 7, 8.
     app.use(notFoundHandler);

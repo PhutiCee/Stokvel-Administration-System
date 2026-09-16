@@ -94,6 +94,39 @@ export const api = {
   delete: (path, opts) => request(path, { ...opts, method: "DELETE" })
 };
 
+// --- Club and members ------------------------------------------------------
+export const clubs = {
+  /** Everything the dashboard needs, in one request. */
+  summary: (opts) => api.get("/api/club", opts),
+  constitution: () => api.get("/api/club/constitution")
+};
+
+export const members = {
+  list: (opts) => api.get("/api/members", opts),
+  get: (memberId) => api.get(`/api/members/${memberId}`),
+  /** REQ-41: validate and compute the catch-up WITHOUT writing anything. */
+  preview: (details) => api.post("/api/members/preview", details),
+  register: (details) => api.post("/api/members", details),
+  assignRole: (memberId, role) => api.patch(`/api/members/${memberId}/role`, { role })
+};
+
+export const cycles = {
+  list: () => api.get("/api/cycles"),
+  current: (opts) => api.get("/api/cycles/current", opts),
+  get: (cycleId) => api.get(`/api/cycles/${cycleId}`),
+  /** openCycle() + generateExpectedContributions(), one operation. */
+  open: (dates) => api.post("/api/cycles", dates || {})
+};
+
+export const contributions = {
+  capture: (contributionId, payment) =>
+    api.post(`/api/contributions/${contributionId}/capture`, payment)
+};
+
+export const ledger = {
+  list: (limit = 100, opts) => api.get(`/api/ledger?limit=${limit}`, opts)
+};
+
 // --- Use Case 1 ------------------------------------------------------------
 export const auth = {
   login: (identifier, password) => api.post("/api/auth/login", { identifier, password }),

@@ -8,7 +8,12 @@
  * connection error on the first request during a demonstration.
  */
 
-require("dotenv").config();
+const path = require("path");
+
+// Resolve .env relative to THIS file rather than the working directory, so the
+// migration and seed scripts behave the same whether they are run from the
+// repository root or from inside server/.
+require("dotenv").config({ path: path.join(__dirname, "..", "..", ".env") });
 
 function required(name) {
     const value = process.env[name];

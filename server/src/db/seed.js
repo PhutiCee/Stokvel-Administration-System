@@ -40,6 +40,44 @@ const startOfMonth = (d) => new Date(new Date(d).getFullYear(), new Date(d).getM
 // ---------------------------------------------------------------------------
 // People
 // ---------------------------------------------------------------------------
+// REQ-34 requires at least one of an email address or a postal address. Most
+// of these members have no email, which is the realistic case — so they get a
+// postal address, and migration 008's constraint is satisfied the way it is
+// meant to be rather than by giving everybody a fictional inbox.
+const TOWNS = [
+    "Seshego", "Mankweng", "Polokwane", "Lebowakgomo", "Mokopane",
+    "Tzaneen", "Giyani", "Thohoyandou", "Jane Furse", "Burgersfort"
+];
+
+/**
+ * A South African identity number carries a Luhn check digit in position 13.
+ * The numbers in PEOPLE below are invented, so their final digit is rewritten
+ * here to whatever Luhn requires. Without this the seeded members would all
+ * fail the validation that registerMember() applies to every new member — the
+ * demonstration data would not survive the system's own rules, which is the
+ * one thing seed data must never do.
+ */
+function withCheckDigit(id) {
+    const first12 = String(id).slice(0, 12);
+    // Same parity as checkIdNumber() in members.service.js: a digit is doubled
+    // when (12 - i) is odd. Position 12, the check digit itself, is never
+    // doubled, so it can be solved for directly.
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+        let d = +first12[i];
+        if ((12 - i) % 2 === 1) {
+            d *= 2;
+            if (d > 9) d -= 9;
+        }
+        sum += d;
+    }
+    return first12 + String((10 - (sum % 10)) % 10);
+}
+
+function postalFor(index) {
+    return `P.O. Box ${1200 + index * 37}, ${TOWNS[index % TOWNS.length]}, 0700`;
+}
+
 const PEOPLE = [
     { key: "nomsa",   name: "Nomsa Maluleke",       phone: "0824417788", email: "nomsa.maluleke@gmail.com",  id: "8703125072083" },
     { key: "thabo",   name: "Thabo Mokoena",        phone: "0739021145", email: "tmokoena@webmail.co.za",    id: "7811045811082" },
@@ -150,13 +188,18 @@ async function seed() {
 
         // --- users ---------------------------------------------------------
         const userId = {};
-        for (const p of PEOPLE) {
+        for (const [index, p] of PEOPLE.entries()) {
+            // Anybody without an email gets a postal address, so every row
+            // satisfies the contact-channel constraint from migration 008.
+            const postal = p.email ? null : postalFor(index);
             const { rows } = await client.query(
                 `INSERT INTO user_account
-                     (phone, email, full_name, id_number, password_hash, is_platform_admin)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                     (phone, email, full_name, id_number, password_hash,
+                      is_platform_admin, postal_address)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                  RETURNING user_id`,
-                [p.phone, p.email || null, p.name, p.id, passwordHash, !!p.platformAdmin]
+                [p.phone, p.email || null, p.name, withCheckDigit(p.id), passwordHash,
+                 !!p.platformAdmin, postal]
             );
             userId[p.key] = rows[0].user_id;
         }
@@ -307,6 +350,13 @@ async function seed() {
             // --- cycles, contributions, ledger -----------------------------
             const amountCents = toCents(c.contribution);
             const monthsToSeed = Math.min(def.monthsOld, 6);
+            // Ledger entries are COLLECTED here and written after the loop, in
+            // date order. The running balance must be computed in the order the
+            // ledger is read, not the order the seed happens to build it: a
+            // resulting_balance that only reconciles in insertion order makes
+            // the book look falsified the moment anybody sorts it by date,
+            // which is exactly the tamper signal the column exists to give.
+            const ledgerQueue = [];
             let balanceCents = 0;
 
             const activeKeys = def.members;
@@ -365,18 +415,14 @@ async function seed() {
 
                     if (capturedCents > 0) {
                         balanceCents += capturedCents;
-                        await client.query(
-                            `INSERT INTO ledger_entry
-                                 (club_id, member_id, entry_type, amount,
-                                  resulting_balance, description, posted_by, posted_at)
-                             VALUES ($1, $2, 'Contribution', $3, $4, $5, $6, $7)`,
-                            [clubId, memberId[key], toNumeric(capturedCents),
-                             toNumeric(balanceCents),
-                             `Contribution, cycle ${seq}`,
-                             userId[Object.keys(def.officers)[0]],
-                             new Date(receipt).toISOString()]
-                        );
-                        ledgerCount += 1;
+                        ledgerQueue.push({
+                            memberId: memberId[key],
+                            type: "Contribution",
+                            amountCents: capturedCents,
+                            description: `Contribution, cycle ${seq}`,
+                            postedBy: userId[Object.keys(def.officers)[0]],
+                            postedAt: new Date(receipt)
+                        });
                     }
                 }
 
@@ -386,20 +432,44 @@ async function seed() {
                     if (balanceCents >= payoutCents) {
                         const recipient = activeKeys[(seq - 1) % activeKeys.length];
                         balanceCents -= payoutCents;
-                        await client.query(
-                            `INSERT INTO ledger_entry
-                                 (club_id, member_id, entry_type, amount,
-                                  resulting_balance, description, posted_by, posted_at)
-                             VALUES ($1, $2, 'Payout', $3, $4, $5, $6, $7)`,
-                            [clubId, memberId[recipient], toNumeric(-payoutCents),
-                             toNumeric(balanceCents),
-                             `Rotation payout, cycle ${seq}`,
-                             userId.thabo, addDays(due, 1).toISOString()]
-                        );
-                        ledgerCount += 1;
+                        ledgerQueue.push({
+                            memberId: memberId[recipient],
+                            type: "Payout",
+                            amountCents: -payoutCents,
+                            description: `Rotation payout, cycle ${seq}`,
+                            postedBy: userId.thabo,
+                            postedAt: addDays(due, 1)
+                        });
                     }
                 }
             }
+
+            // Write the ledger in date order, so resulting_balance reconciles
+            // against a running sum taken in the same order the book is read.
+            ledgerQueue.sort((a, b) => a.postedAt - b.postedAt);
+
+            // Give every entry a DISTINCT timestamp. Seeded entries otherwise
+            // carry a date with no time, so a dozen of them tie at midnight and
+            // any ordering among them is arbitrary — which makes the running
+            // balance irreconcilable no matter what order it was written in.
+            // Real captures get a genuine now(), so this only affects the seed.
+            // Offsets stay well under a day, so no entry moves to another date.
+            let running = 0;
+            for (const [i, e] of ledgerQueue.entries()) {
+                e.postedAt = new Date(e.postedAt.getTime() + 8 * 3600000 + i * 60000);
+                running += e.amountCents;
+                await client.query(
+                    `INSERT INTO ledger_entry
+                         (club_id, member_id, entry_type, amount,
+                          resulting_balance, description, posted_by, posted_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [clubId, e.memberId, e.type, toNumeric(e.amountCents),
+                     toNumeric(running), e.description, e.postedBy,
+                     e.postedAt.toISOString()]
+                );
+                ledgerCount += 1;
+            }
+            balanceCents = running;
 
             // A non-zero reconciliation difference, so the exception state on
             // the treasurer's dashboard is reachable (REQ-98).
@@ -442,4 +512,8 @@ async function seed() {
     }
 }
 
-seed().catch(() => process.exit(1));
+seed().catch((err) => {
+    console.error(`\n  Seed failed: ${err.message}`);
+    if (err.code) console.error(`  PostgreSQL code: ${err.code}`);
+    process.exit(1);
+});
