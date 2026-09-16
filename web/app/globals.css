@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink-900 antialiased;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  /* A visible focus ring on every interactive element. Members will use this on
+     a phone, but the secretary keeping minutes will be on a keyboard all
+     evening, and tab order that cannot be seen is tab order that cannot be
+     used. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-600 ring-offset-2 ring-offset-canvas rounded;
+  }
+
+  .on-navy :focus-visible {
+    @apply ring-offset-navy-950;
+  }
+
+  ::selection {
+    @apply bg-accent-100;
+  }
+}
+
+@layer utilities {
+  /* Tabular figures. Non-negotiable anywhere money is shown: in a column of
+     amounts the decimal points must line up, which is the entire reason a
+     ledger is set the way it is. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* A member statement is printed and handed over at the annual meeting, so it
+   has to survive Ctrl-P. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    @apply bg-white;
+  }
+}

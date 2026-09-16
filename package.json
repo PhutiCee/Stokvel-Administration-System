@@ -2,21 +2,19 @@
   "name": "stokvel-administration-system",
   "version": "0.1.0",
   "private": true,
+  "description": "Stokvel Administration System — SCSC082 Software Engineering, Group 5, University of Limpopo",
+  "workspaces": ["server", "web"],
+  "engines": { "node": ">=18.17" },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.2.11",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.11",
-    "tailwindcss": "^4"
+    "dev": "npm run dev --workspace=@sas/server & npm run dev --workspace=@sas/web",
+    "dev:api": "npm run dev --workspace=@sas/server",
+    "dev:web": "npm run dev --workspace=@sas/web",
+    "build": "npm run build --workspace=@sas/web",
+    "migrate": "npm run migrate --workspace=@sas/server",
+    "migrate:status": "npm run migrate:status --workspace=@sas/server",
+    "seed": "npm run seed --workspace=@sas/server",
+    "db:rebuild": "npm run db:rebuild --workspace=@sas/server",
+    "test": "npm run test --workspace=@sas/server"
   }
+  
 }

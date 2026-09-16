@@ -1,40 +1,216 @@
-# Stokvel-Administration-System
-Manages tenancy of clubs on the platform, creates and suspends clubs, monitors platform health and produces anonymised aggregate reports. Does not access club-level financial data.
+# Stokvel Administration System
 
+Administration for rotating savings clubs, grocery stokvels and burial societies.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+Group 5 · SCSC082 Software Engineering · Department of Computer Science,
+University of Limpopo · 2026
 
-## Getting Started
+Built to the approved Software Requirements Specification v1.0 and the Detailed
+System Design Document.
 
-First, run the development server:
+---
+
+## Architecture
+
+Three tiers, as described in SDD section 4.
+
+| Tier | Technology | Directory |
+|---|---|---|
+| Presentation | Next.js 14 (App Router), Tailwind CSS | `web/` |
+| Application | Node.js, Express, REST API | `server/` |
+| Data | PostgreSQL 15 (hosted on Supabase) | `server/src/db/` |
+
+The two tiers run as separate processes and talk over HTTP. The web application
+holds no database credentials and performs no data access of its own.
+
+**Supabase is used as a PostgreSQL database and nothing else.** The Supabase
+JavaScript SDK, PostgREST, Supabase Auth and Row Level Security are all
+deliberately unused: authentication, authorisation and tenant isolation belong
+in the application tier, which is where the design document places them. See
+`docs/decisions.md`.
+
+---
+
+## Getting it running
+
+You need Node.js 18.17 or later and a Supabase project.
+
+### 1. Install
+
+```bash
+git clone <your-repo-url>
+cd stokvel-administration-system
+npm install
+```
+
+npm workspaces installs both `server/` and `web/` from the root.
+
+### 2. Configure the server
+
+```bash
+cp server/.env.example server/.env
+```
+
+Open `server/.env` and set `DATABASE_URL`. In Supabase go to
+**Project Settings → Database → Connection string** and take the
+**Session pooler** string:
+
+```
+postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+Use the session pooler, not the direct connection. The direct connection
+(`db.<ref>.supabase.co`) resolves over IPv6 only on the free tier, and on most
+South African home and campus networks it will simply time out with no useful
+error. The pooler answers on IPv4.
+
+Use port 5432 (session mode), not 6543 (transaction mode). Express is a
+long-running process with its own connection pool, which is what session mode is
+for; transaction mode silently breaks prepared statements.
+
+If your database password contains `@ : / ?`, percent-encode it.
+
+### 3. Configure the web application
+
+```bash
+cp web/.env.local.example web/.env.local
+```
+
+The default (`http://localhost:4000`) is correct for local development.
+
+### 4. Create the schema and load the demonstration data
+
+```bash
+npm run migrate
+npm run seed
+```
+
+### 5. Run both tiers
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- API — http://localhost:4000
+- Web — http://localhost:3000
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Or run them in separate terminals with `npm run dev:api` and `npm run dev:web`,
+which is easier to read when something goes wrong.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Signing in to the seeded system
 
-To learn more about Next.js, take a look at the following resources:
+Every seeded account uses the password in `SEED_PASSWORD` (`stokvel2026` by
+default). The username is the phone number; spaces and a `+27` prefix are
+accepted.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Phone | Person | Holds |
+|---|---|---|
+| `082 441 7788` | Nomsa Maluleke | Treasurer of Mmakau, **ordinary Member of Bokamoso** |
+| `073 902 1145` | Thabo Mokoena | Chairperson of Mmakau, Member of Lehumo |
+| `071 334 9026` | Refilwe Mahlangu | Secretary of Mmakau |
+| `082 201 5566` | Grace Baloyi | Chairperson of Bokamoso |
+| `082 554 0033` | Solomon Mabunda | Chairperson of Lehumo |
+| `084 210 6690` | Kabelo Netshiozwi | Platform Administrator |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Start with Nomsa.** She holds two different roles in two different clubs on
+one account, which is the tenancy model the whole system is built around.
 
-## Deploy on Vercel
+### Edge cases already in the seed
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+These are seeded deliberately so a demonstration can reach them without setup.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Lerato Ndlovu is **in arrears at queue position 2** in Mmakau, so a payout
+  refusal is one row below the head of the queue.
+- Zanele Chauke **joined mid-cycle** and carries a catch-up obligation.
+- Rhulani Baloyi has **exited** but his rows remain, because ledger history must
+  keep resolving to a name.
+- Martha Chabalala is **95 days into Lehumo's 180-day waiting period**, so a
+  burial claim refusal is always available.
+- Mmakau has an **unexplained R450 reconciliation difference**.
+
+---
+
+## Commands
+
+Run from the repository root.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Both tiers |
+| `npm run dev:api` | Express only |
+| `npm run dev:web` | Next.js only |
+| `npm run migrate` | Apply outstanding migrations |
+| `npm run migrate:status` | Show which migrations have run |
+| `npm run seed` | Reload the demonstration data |
+| `npm run db:rebuild` | Drop everything, migrate, reseed (**destructive**) |
+| `npm run build` | Production build of the web application |
+
+---
+
+## Where things live
+
+```
+server/src/
+  middleware/        the cross-cutting modules, in the order they run
+    authenticate.js    session cookie -> req.actor          REQ-4, REQ-5
+    tenancy.js         club scope on every query            REQ-13, REQ-14
+    authorize.js       role check before every operation    REQ-8
+    audit.js           record()                             REQ-9
+  rules/             pure functions: no Express, no SQL, no React
+  modules/<feature>/ routes (HTTP) | service (rules) | repo (SQL)
+  db/
+    pool.js            connection pool AND the tenancy guard
+    migrations/        numbered, run in order, never edited once applied
+
+web/
+  app/               routes
+  components/ui/     primitives
+  lib/
+    api.js             the only place that calls the API
+    session.js         cached view of the server session
+    format.js          money and date presentation
+```
+
+Each feature module is three files. `routes` speaks HTTP and knows no rules.
+`service` holds the rules and knows no SQL. `repo` holds the SQL and knows no
+rules. That split is what makes the services testable without starting a server.
+
+---
+
+## Two things worth knowing before you read the code
+
+**The tenancy filter is enforced, not advisory.** `pool.forClub(clubId)` inspects
+every statement and throws if it touches a club-scoped table without a `club_id`
+predicate. A developer who forgets the filter gets a loud error the first time
+the query runs, rather than a silent leak. This is the implementation of "the
+tenancy filter wraps all data access" from SDD 4.1.
+
+**The active club lives on the session row in the database**, not in a header or
+a request body. The client cannot assert which club it is operating in — it can
+only ask the server to switch, and the switch checks membership inside the same
+SQL statement that performs it. A request for a record in another club returns
+404, never 403, because a 403 would confirm the record exists (REQ-14).
+
+---
+
+## Implementation status
+
+Milestone 4 covers Use Cases 1 and 2 end to end.
+
+**Built**
+
+- Database schema, all tables, append-only ledger and audit log
+- Authentication, sessions, lockout, audit trail
+- Tenancy filter and role-based access control
+- Sign-in, club selection, home page
+
+**Scheduled**
+
+- Members and contributions (Use Case 2 screens)
+- Ledger, statements, dashboard
+- Payouts, rotating queue, burial claims (Use Cases 3 and 4)
+- Reconciliation, governance, assistant (Use Cases 5, 6, 7)
+- REQ-3, federated sign-in. Deliberately not shown on the sign-in page until it
+  works — a button that does nothing is worse than no button.
