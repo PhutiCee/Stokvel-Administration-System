@@ -16,7 +16,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText } from "lucide-react";
+import { LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText, MessageCircle } from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
@@ -30,7 +30,8 @@ const NAV = [
   { href: "/contributions", label: "Contributions", icon: Receipt, permission: "view.dashboard" },
   { href: "/members", label: "Members", icon: Users, permission: "view.members" },
   { href: "/statement", label: "My statement", icon: FileText, permission: "view.ownStatement" },
-  { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" }
+  { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" },
+  { href: "/assistant", label: "Assistant", icon: MessageCircle, permission: "assistant.ask" }
 ];
 
 export default function ClubShell({ children }) {
