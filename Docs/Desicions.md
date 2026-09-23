@@ -297,3 +297,293 @@ tamper signal that column exists to give.
 **Delivered:** the seed recomputes each identity number's check digit, and writes
 ledger entries in date order with distinct timestamps so the running balance
 reconciles under any stable sort.
+
+---
+
+## 18. A constitution version is immutable in the database, and versions are ordered
+
+**REQ-30** requires every constitution to be versioned and every prior version
+retained. Migration 003 stored each version as its own row, but the table
+allowed `UPDATE` and `DELETE`, and allowed version 3 to take effect before
+version 2. The application had no code that did either, so the requirement held
+only until someone wrote such a statement.
+
+**Delivered:** migration 010. Triggers refuse `UPDATE` and `DELETE` on
+`constitution`, the same way migration 006 protects the ledger. A third trigger
+requires the next version to be numbered one higher than the last and to take
+effect strictly later.
+
+**Why the ordering matters:** "the version in force on a date" is the one with
+the latest effective date not after that date. If a higher-numbered version could
+take effect earlier, then on the dates between the two the older version would
+be in force even though the newer one was adopted later, and two readers could
+give different answers to the same question.
+
+**What the database does not enforce:** that an amendment may not take effect in
+the past (REQ-33). That is a business rule about new amendments. The seed and any
+import of historical records legitimately insert past dates. It is enforced in
+`rules/versioning.js`.
+
+**Consequence:** deleting a club that has a constitution is now impossible, which
+matches the ledger (`ON DELETE RESTRICT`). The system has no such operation.
+
+---
+
+## 19. Rules code handles calendar dates as text
+
+The `iso()` helper used in the contribution service is
+`new Date(d).toISOString().slice(0, 10)`. node-postgres builds a `Date` at local
+midnight for a `DATE` column, and `toISOString()` converts that to UTC. On a
+server running in South Africa (UTC+2) the date comes back one day early:
+`2024-11-20` becomes `2024-11-19`. On a server in UTC it is correct, which is why
+it was not noticed.
+
+**Delivered for new code:** `lib/dates.js`. Dates that feed the rules engine
+travel as `YYYY-MM-DD` strings, selected with `::text` in SQL, and never pass
+through a `Date`. `todayIso()` returns today's date in Africa/Johannesburg, so a
+club acting at 01:00 on the 21st is acting on the 21st even when the server is
+still on the 20th in UTC. The versioning tests and the database checks were run
+under `TZ=Africa/Johannesburg` and `TZ=America/Los_Angeles`.
+
+**Not changed:** the existing `iso()` calls in the contribution service. Fixing
+them is a separate change to established behaviour, because those calls decide
+which constitution version a penalty is assessed against.
+
+---
+
+## 20. Recording an amendment has no HTTP route until governance exists
+
+**REQ-32** says an amendment takes effect only after a member resolution meets
+the quorum and majority thresholds. The resolution, quorum and outcome logic
+belongs to Use Case 7, which is scheduled after this sprint.
+
+**Delivered:** `createNewVersion()` in `constitution.service.js`, with the
+validation in `rules/versioning.js`, and read-only routes
+(`GET /api/constitution/versions`, `GET /api/constitution/in-force`). There is
+deliberately no route that records an amendment.
+
+**Why:** a route that recorded an amendment now would let the Chairperson change
+the constitution without a resolution, which is the behaviour REQ-32 forbids. It
+would also be a route the governance work would have to remove. The function is
+ready for `giveEffect()` to call when a resolution passes.
+
+---
+
+## 21. A rotation payout pays out the cycle, not a fixed constitution amount
+
+The SRS does not say how the amount a rotating payout pays is calculated. What
+it does say (REQ-66) is that a payout must never exceed the pool balance, and
+Use Case 2 already tolerates partial and outstanding contributions within a
+cycle (REQ-56).
+
+**Delivered:** the amount is the total actually captured for the earliest cycle
+that has not yet been paid out, not `contribution_amount * member_count` from
+the constitution. If every member has paid in full the two are the same
+figure; when they are not, the constitution figure can exceed the pool, which
+REQ-66 forbids outright. Paying out the captured total is always safe by
+construction.
+
+**Consequence:** a Treasurer initiating a payout is shown, as a note rather
+than a refusal, how many members are still short and by how much (assessment
+notes, `payouts.service.js`). The payout is not blocked on that: REQ-72 ties
+payment to the queue position and the cycle's due date having passed, not to
+full collection.
+
+---
+
+## 22. Eligibility is assessed twice: at initiation, and again at approval
+
+REQ-64 requires two distinct officers. Between the Treasurer's initiation and
+the Chairperson's approval, time passes, and the facts an eligibility decision
+depends on can change: a member's standing, the pool balance, an exchange of
+positions.
+
+**Delivered:** `rules/payouts.js` -> `assessRotationPayout` is one function,
+called from `payouts.service.js` at both `initiatePayout` and `approvePayout`.
+The second call is not a rubber stamp: it re-reads the pool, the recipient's
+current standing and any arrears ruling, and refuses the payout if any of them
+have moved against it, even though it passed the first time. REQ-65 requires
+the approver to be shown "the eligibility assessment on which the payout is
+founded" — read as the assessment as it stands at the moment of approval,
+because that is the assessment approval actually relies on, not the one the
+Treasurer saw.
+
+**Consequence:** an approval can fail for a payout that was entirely valid when
+initiated. The refusal states which fact changed (REQ-66, REQ-67) rather than
+repeating the original assessment, since that is what the Chairperson needs to
+act on.
+
+---
+
+## 23. A payout record is a frozen decision, not a status field
+
+The ledger (migration 006) and the constitution (migration 010) are both
+protected against being altered after the fact. A payout carries the same risk:
+REQ-68 requires the initiating user, the approving user, both timestamps and
+the rule applied to be recorded, and REQ-64 requires that dual authorisation
+hold no matter who touches the row afterwards.
+
+**Delivered:** migration 011's `payout_guard()` trigger. A payout may move from
+`Initiated` to `Approved` or to `Cancelled` and no further. Every column that
+describes what was initiated (the recipient, the amount, the cycle, the rule,
+the initiator) is frozen the moment it is approved. Deletion is refused
+outright; a payout that should not proceed is cancelled (REQ-70), and the
+cancellation is itself the record, the same principle as a reversing ledger
+entry (REQ-91).
+
+**Also enforced at the database, not only in the service:** the
+`payout_two_people` constraint (REQ-64) and the `payout_one_open_rotation` and
+`payout_one_per_cycle` unique indexes, which stop two payouts being raised
+against the same cycle or two rotation payouts being open on the same club at
+once, whatever order two requests arrive in.
+
+---
+
+## 24. The payout queue has no table of its own
+
+REQ-71 requires an ordered queue; REQ-76 requires it to be recomputed on
+membership changes while preserving everyone else's relative order.
+
+**Delivered:** the order lives entirely in `member.queue_position`, where
+migration 004 and the existing seed already kept it (`nextQueuePosition` for a
+new member, REQ-42). No new `queue` table was added. `queue.service.js` reads
+the order, applies a rule from `rules/queue.js` (a pure function operating on
+plain arrays), and writes the new positions back inside one locked
+transaction.
+
+**Why not a separate table:** REQ-76's own wording is the reason — "preserve
+the relative order of all members not affected by the event." A second
+structure recording the order alongside `queue_position` is a second place
+that order could live, and the two could disagree the same way a stored pool
+balance could disagree with the ledger (decision 2). One column, one
+transaction, one lock.
+
+**What was added:** a uniqueness constraint on `(club_id, queue_position)`,
+deferred to the end of the transaction, since it did not exist before and two
+members could previously have held the same position. `queue_swap` and
+`queue_arrears_decision` are new tables, because an exchange request and an
+arrears ruling are not positions, they are the process that leads to changing
+one.
+
+---
+
+## 25. An exchange of positions is one row that accumulates its own history
+
+REQ-74 and REQ-75 describe a sequence: a request, the other member's consent,
+the Chairperson's approval, only then the exchange. Each step can also end the
+process without the next one happening.
+
+**Delivered:** `queue_swap` is one row per request, moving through a status
+(`Pending consent` -> `Pending approval` -> `Effected`, or `Declined`,
+`Rejected`, `Cancelled`), rather than a sequence of separate event rows. The
+`swap_effected_needs_both` constraint states REQ-75 at the database as well as
+in the service: a row cannot reach `Effected` without both `consent_given` and
+a Chairperson decision recorded, whatever writes the row.
+
+**A member may be party to at most one open exchange at a time,** in either
+role, enforced by two partial unique indexes. Without it, a member with two
+requests in flight could have their position moved by whichever is approved
+second, silently invalidating the first.
+
+**Cancelling a payout that is waiting for approval frees the club for other
+queue changes; a swap does the reverse.** `approveSwap` refuses while a payout
+is `Initiated` (`queue.service.js`), because REQ-73 moves the recipient to the
+end of the queue on posting — changing the order underneath a payout that is
+already relying on it would let the two operations disagree about who is
+where.
+
+---
+
+## 26. Interest earned and administrative costs are recorded as they occur, as two new ledger entry types
+
+REQ-80's formula needs both figures. Nothing built before this sprint produces
+either: there is no field, table or entry type anywhere that captures interest
+credited to the club's funds or a cost of running it.
+
+**Delivered:** two additions to `ledger_entry_type` (migration 012),
+`'Interest'` and `'Expense'`, posted at the club level (`member_id` is
+already nullable, unlike a Contribution or Penalty which belong to one
+member) through the existing `appendEntry()`, the same function every other
+entry type already goes through. `distributions.service.js` exposes this as
+`recordInterest()` and `recordExpense()`, Treasurer-only, each requiring an
+amount and a description, the same shape as recording a penalty.
+
+**Why not compute interest automatically from a bank feed or a rate:** no
+such integration or rate is specified anywhere, and inventing one (a fixed
+annual percentage, say) would silently determine a real number nobody agreed
+to. Recording it as it is told to the system, the same way a contribution
+is recorded as it is told to the system, keeps the number as an input the
+Treasurer is accountable for, not a formula the software invented.
+
+**Consequence:** a club with no interest and no costs distributes correctly
+with both figures at zero; the formula does not depend on either being
+non-zero.
+
+---
+
+## 27. "Proportionate" means proportionate to a member's own net contribution for the period
+
+REQ-80 requires interest and administrative costs to be shared out
+"proportionately" but does not say proportionate to what.
+
+**Delivered:** each member's weight is their own captured contributions less
+their own unwaived penalties for the period, floored at zero
+(`rules/distributions.js` -> `computeShares`). A member who put more into the
+pool carries a larger share of what it earned and a larger share of what it
+cost to run.
+
+**Alternative considered and rejected:** an equal split among all members,
+regardless of contribution. Rejected because a stokvel's constitution
+(REQ-21, `contribution_amount`) already treats members as contributing
+possibly-unequal amounts is not assumed elsewhere in the system, but nothing
+prevents a future constitution amendment from doing so, and a share of what
+the members' own money earned should track what each of them put in, not a
+headcount.
+
+**A member whose penalties exceed their contributions is floored at zero
+for this purpose,** not given a negative weight: a negative weight would
+mean the *more* a member owes, the *more* of the interest and costs they are
+asked to carry, which inverts the intent of "proportionate to contribution."
+
+---
+
+## 28. A distribution covers current members only; an exited member is settled separately
+
+REQ-80 does not say whether a member who left partway through the year is
+owed anything at year-end.
+
+**Delivered:** `distributions.repo.js` -> `periodMemberTotals` excludes any
+member whose standing is `Exited`. Their contributions during the period
+remain part of the pool being divided, so the remaining members' shares are
+larger by that amount, the same way a genuinely unclaimed sum would be.
+
+**Why:** `payout_type` already lists `'Exit settlement'` as a distinct kind of
+payout (migration 011, following SDD 5.2.3), which is the mechanism REQ-26's
+exit notice period exists to lead to. That mechanism is not built this sprint.
+Paying an exited member again here, once it is, would be a double payment for
+the same departure. Excluding them now and building the exit-settlement path
+separately keeps the two from overlapping.
+
+---
+
+## 29. A member whose computed share would be negative refuses the whole distribution
+
+Weighting at zero (decision 27) keeps a heavily-penalised member from
+carrying other members' costs. It does not, by itself, stop their OWN base
+figure (their own captured contributions less their own penalties) from
+being negative before interest and costs are even added.
+
+**Delivered:** `rules/distributions.js` -> `assessDistribution` refuses the
+distribution outright, naming the member, if any computed final share is
+negative, rather than paying them nothing and quietly folding their shortfall
+into everyone else's shares.
+
+**Why refuse rather than clamp to zero:** clamping a negative share to zero
+without redistributing the shortfall would break REQ-81 — the shares would
+no longer sum to the pool. Redistributing it invents a rule ("their debt is
+shared by everyone else") that is stated nowhere. Refusing and naming the
+member gives the Treasurer and Chairperson the choice explicitly: waive the
+penalty (REQ-63, not yet built), recover it before distributing, or exclude
+that member from this year's distribution by resolving their standing first.
+This is the same posture as REQ-77's arrears ruling: a case the constitution
+does not resolve on its own is handed to a human, not decided silently.

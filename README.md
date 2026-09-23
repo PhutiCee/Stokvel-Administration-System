@@ -230,7 +230,7 @@ See `docs/traceability.md` for the requirement-by-requirement record.
 ## Tests
 
 ```bash
-npm test       # 53 tests, no database required
+npm test       # 196 tests, no database required
 npm run check  # verifies every relative import resolves
 ```
 

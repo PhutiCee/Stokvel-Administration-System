@@ -136,7 +136,10 @@ const CLUBS = [
             contribution: 350, penalty: 40, grace: 7, quorum: 50,
             exitNotice: 60, order: "Negotiated",
             forfeiture: "A member exiting before year-end receives contributions less penalties and a proportionate share of costs.",
-            waiting: 0, schedule: []
+            waiting: 0, schedule: [],
+            // REQ-79. A grocery stokvel typically distributes ahead of the
+            // December holidays.
+            yearEndMonth: 11, yearEndDay: 30
         },
         officers: { grace: "Chairperson", portia: "Treasurer", sarah: "Secretary" },
         members: ["grace", "portia", "sarah", "elias", "johanna", "petunia", "nomsa"],
@@ -225,12 +228,13 @@ async function seed() {
                       cycle_frequency, cycle_start_date, penalty_amount,
                       grace_period_days, quorum_percentage, exit_notice_days,
                       payout_order_method, forfeiture_rule,
-                      waiting_period_days, benefit_schedule)
-                 VALUES ($1, 1, $2, $3, 'Monthly', $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                      waiting_period_days, benefit_schedule,
+                      year_end_month, year_end_day)
+                 VALUES ($1, 1, $2, $3, 'Monthly', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
                 [clubId, iso(registered), toNumeric(toCents(c.contribution)),
                  iso(registered), toNumeric(toCents(c.penalty)), c.grace, c.quorum,
                  c.exitNotice, c.order, c.forfeiture, c.waiting,
-                 JSON.stringify(c.schedule)]
+                 JSON.stringify(c.schedule), c.yearEndMonth || null, c.yearEndDay || null]
             );
 
             // --- members ---------------------------------------------------
@@ -432,13 +436,38 @@ async function seed() {
                     if (balanceCents >= payoutCents) {
                         const recipient = activeKeys[(seq - 1) % activeKeys.length];
                         balanceCents -= payoutCents;
+
+                        // The authorisation record behind the ledger entry
+                        // (REQ-64, REQ-68): initiated by the Treasurer, approved
+                        // by the Chairperson, two different accounts, as the
+                        // system itself would have recorded it.
+                        const treasurerKey = Object.keys(def.officers).find((k) => def.officers[k] === "Treasurer");
+                        const chairKey     = Object.keys(def.officers).find((k) => def.officers[k] === "Chairperson");
+                        const decidedOn = addDays(due, 1);
+                        const { rows: payoutRows } = await client.query(
+                            `INSERT INTO payout
+                                 (club_id, member_id, payout_type, status, amount, cycle_id,
+                                  constitution_version, eligibility_rule_applied,
+                                  assessment_at_initiation, assessment_at_approval,
+                                  initiated_by, initiated_at, approved_by, approved_at)
+                             VALUES ($1, $2, 'Rotation', 'Approved', $3, $4, 1, $5,
+                                     $6::jsonb, $6::jsonb, $7, $8, $9, $10)
+                             RETURNING payout_id`,
+                            [clubId, memberId[recipient], toNumeric(payoutCents), cycleId,
+                             `Rotating club, constitution version 1. Payout order method: ${c.order}. ` +
+                             `The member at the head of the queue receives the contributions captured for cycle ${seq}.`,
+                             JSON.stringify({ seeded: true, note: "Historical payout created by the seed." }),
+                             userId[treasurerKey], new Date(decidedOn.getTime() + 9 * 3600000).toISOString(),
+                             userId[chairKey],     new Date(decidedOn.getTime() + 14 * 3600000).toISOString()]
+                        );
                         ledgerQueue.push({
                             memberId: memberId[recipient],
                             type: "Payout",
                             amountCents: -payoutCents,
                             description: `Rotation payout, cycle ${seq}`,
-                            postedBy: userId.thabo,
-                            postedAt: addDays(due, 1)
+                            postedBy: userId[chairKey],
+                            postedAt: decidedOn,
+                            payoutId: payoutRows[0].payout_id
                         });
                     }
                 }
@@ -461,11 +490,11 @@ async function seed() {
                 await client.query(
                     `INSERT INTO ledger_entry
                          (club_id, member_id, entry_type, amount,
-                          resulting_balance, description, posted_by, posted_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                          resulting_balance, description, posted_by, posted_at, payout_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                     [clubId, e.memberId, e.type, toNumeric(e.amountCents),
                      toNumeric(running), e.description, e.postedBy,
-                     e.postedAt.toISOString()]
+                     e.postedAt.toISOString(), e.payoutId || null]
                 );
                 ledgerCount += 1;
             }

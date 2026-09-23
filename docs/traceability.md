@@ -58,7 +58,10 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-27 | Burial: covered categories and benefit amounts | `constitution.benefit_schedule` (JSONB) | automated: a burial club without a schedule is refused |
 | REQ-28 | Rotating: initial payout order method | `constitution.payout_order_method` | automated |
 | REQ-29 | Validate for internal consistency before activation | `rules/constitution.js` → `validateConsistency` | automated: grace ≥ cycle length, quorum outside 1–100, contribution ≤ 0 all refused |
-| REQ-30 | An amendment creates a new version | `constitution` unique on `(club_id, version)`; no update path exists | database |
+| REQ-30 | An amendment creates a new version; prior versions retained; effective date recorded | `constitution` unique on `(club_id, version)`; migration 010 triggers refuse `UPDATE` and `DELETE` and require consecutive version numbers with strictly later effective dates; `constitution.service.js` -> `createNewVersion` | database: `UPDATE`, `DELETE`, a version-number gap and a backwards effective date all raise; automated: `versioning.test.js` |
+| REQ-31 | Every rule evaluated against the version in force on the date of the transaction, not the current one | `rules/versioning.js` -> `versionInForce` (the single resolver); `constitution.service.js` -> `getVersionInForceOn`; `GET /api/constitution/in-force?date=` | automated: `versioning.test.js` (on, before and after an effective date; order independence; tie-break); `payouts.service.js` -> `assessEligibility` calls the resolver. **Partial:** the contribution and penalty code still resolve the version with their own SQL. Burial claims are not yet built |
+| REQ-32 | An amendment takes effect only after a resolution meeting quorum and majority | `createNewVersion` exists; it has no route by design | **not met yet.** The service is ready for governance to call. It is not exposed over HTTP until Use Case 7 records the resolution, so that no officer can amend without one |
+| REQ-33 | An amendment applies prospectively only | `rules/versioning.js` -> `validateNewVersion` refuses an effective date in the past | automated: `versioning.test.js`. **Partial:** an amendment cannot be backdated, but a cycle already open when an amendment takes effect is not yet held on the old version |
 
 ## Membership
 
@@ -103,16 +106,73 @@ Requirements not listed are not yet implemented. They are collected at the end.
 
 ---
 
+## Payouts and payout queue (Use Case 3, rotating clubs)
+
+Rotation payouts only. Distributions (below) are also built; burial claims
+(REQ-83 to REQ-88) authorise and post through the same `payout` table once
+their own eligibility rules exist; see Not yet implemented.
+
+| REQ | Requirement | Implemented in | Evidence |
+|---|---|---|---|
+| REQ-64 | Initiated by the Treasurer, approved by a different account, before posting | `payouts.service.js` -> `initiatePayout`, `approvePayout`; `payout_two_people` constraint (migration 011) | database: `approved_by = initiated_by` raises `23514` even bypassing the service; automated + integration: initiating and approving with the same account is refused |
+| REQ-65 | At approval, the recipient, amount, rule and resulting pool balance are shown | `payouts.service.js` -> `getPayout` returns `assessmentNow`, re-computed at read time, not the stale figure from initiation | integration: the approver's view reflects a pool change made after initiation |
+| REQ-66 | Refuse a payout whose amount exceeds the pool | `rules/payouts.js` -> `assessRotationPayout`, checked at both initiation and approval | automated: `payouts.test.js`; integration: a payout initiated when the pool was sufficient is refused at approval once it no longer is |
+| REQ-67 | Refuse a payout to a Suspended or Expelled member | `rules/payouts.js` -> `assessRotationPayout` | automated: `payouts.test.js`; integration: standing changed after initiation is caught at approval |
+| REQ-68 | Record the initiator, approver, both timestamps and the rule applied | `payout` table columns; `eligibility_rule_applied`, `assessment_at_initiation`, `assessment_at_approval` | database: `payout_state_shape` and `payout_guard()` (migration 011) make the initiation facts immutable once approved |
+| REQ-69 | Notify the recipient on posting | not built | **not met yet.** Notifications (see Not yet implemented) are a separate service; the payout is complete without it |
+| REQ-70 | Treasurer may cancel an Initiated payout, with a reason | `payouts.service.js` -> `cancelPayout` | automated + integration: cancelling frees the cycle for a later payout; a reason is required; an Approved payout cannot be cancelled |
+| REQ-71 | Ordered payout queue, established by the constitution's method | `rules/queue.js` -> `drawOrder`, `seniorityOrder`, `checkProposedOrder`; `queue.service.js` -> `establishQueue` | automated: `queue.test.js`; integration: all three methods (Random draw, Seniority, Negotiated) against seeded data |
+| REQ-72 | Only the member at the head may be initiated | `rules/payouts.js` -> `assessRotationPayout` | automated + integration |
+| REQ-73 | Queue advances on posting; recipient goes to the end | `queue.service.js` -> `advanceAfterPayout`, called inside `approvePayout`'s transaction | integration: the paid member moves to the end, everyone else moves up one, in the same order |
+| REQ-74 | A member may request an exchange with a named other member; recorded pending | `queue.service.js` -> `requestSwap` | automated + integration |
+| REQ-75 | Exchange effected only on the other member's express consent AND Chairperson approval, both recorded | `queue.service.js` -> `consentToSwap`, `approveSwap`; `swap_effected_needs_both` constraint | database + integration: approval before consent is refused; the database itself refuses an `Effected` row with no consent |
+| REQ-76 | Queue recomputed on admission, exit, expulsion and exchange; relative order of everyone else preserved | `rules/queue.js` -> `removeMember`, `appendMember`, `swap`; `queue.service.js` -> `removeFromQueue` | automated: `queue.test.js`; integration: removing a member closes the gap without disturbing anyone else's order |
+| REQ-77 | Queue cannot advance past a member In arrears; Chairperson defers or pays notwithstanding, recorded | `queue.service.js` -> `resolveArrears`; `queue_arrears_decision` table | automated + integration: both options exercised; a Suspended member can only be deferred, never paid (REQ-67) |
+| REQ-78 | Every member sees their own position and a projected date | `rules/queue.js` -> `projectHeadDates`; `GET /api/queue/me` | automated: `queue.test.js`; integration: dates step forward by one cycle per position, by the constitution's frequency |
+
+**Not yet covered here:** a member joining mid-rotation is placed by
+`members.repo.js` -> `nextQueuePosition` (REQ-42), predating this sprint; it is
+not re-verified against `rules/queue.js` -> `appendMember`, which exists for
+symmetry and for the exit/expulsion path to use later.
+
+---
+
+## Year-end distributions (Use Case 3, accumulating clubs)
+
+REQ-79's year-end date, REQ-80's formula, REQ-81's exact reconciliation and
+REQ-82's itemised approval. Shares its dual-authorisation and posting
+mechanism with rotation payouts (`payout` table, `payout_guard()`), but as one
+computation covering every member, not one payout at a time.
+
+| REQ | Requirement | Implemented in | Evidence |
+|---|---|---|---|
+| REQ-79 | Distribute at the year-end date named in the constitution | `constitution.year_end_month/day` (migration 012); `lib/dates.js` -> `nextYearEndAfter`; `distributions.service.js` -> `resolvePeriod` | automated: `distributions.test.js`; integration: not-yet-due is refused and states the date it falls due |
+| REQ-80 | Each member's share: captured contributions, less unwaived penalties, plus a proportionate share of interest, less a proportionate share of administrative costs | `rules/distributions.js` -> `computeShares`; `distributions.service.js` -> `recordInterest`, `recordExpense` (the two figures the formula needs, with nowhere else to come from — see decisions.md) | automated: `distributions.test.js`; integration: a member's share reflects both an interest entry and an expense entry recorded mid-period |
+| REQ-81 | Refuse to post a distribution whose shares do not sum to the pool exactly | `rules/distributions.js` -> `allocateProportionally` (largest-remainder method); `assessDistribution`, re-checked at approval by `verifyFrozenAssessment` | automated: `distributions.test.js` (every split reconciles to the cent, for both odd and even divisions); integration: activity between initiation and approval that breaks reconciliation is refused at approval, not silently absorbed |
+| REQ-82 | Present the full computation, itemised by member, before posting | `distribution.assessment_at_initiation` (JSONB, frozen); `GET /api/distributions/:id` | integration: the itemisation shown at initiation is exactly what posts at approval, one ledger entry per member |
+
+**Also enforced, the same way as rotation payouts:** REQ-64 (dual
+authorisation: `distribution_two_people` constraint, migration 012), REQ-67 (a
+Suspended or Expelled member is refused, re-checked at approval), REQ-68 (the
+computation is frozen once approved, `distribution_guard()`), REQ-70
+(cancellation, with reason, before approval).
+
+**Assumptions this implementation makes, none of them stated in the SRS:**
+REQ-80's "proportionate" is proportionate to each member's own net
+contribution for the period; a member who has already exited is settled
+separately and is excluded from a distribution; a member whose penalties
+exceed their contributions produces a refusal rather than a debt carried
+elsewhere. See decisions.md, decisions 26 to 29.
+
+---
+
 ## Not yet implemented
 
 Scheduled for the sprints after the preliminary release.
 
-**Payout engine (Use Case 3)** — REQ-64 to REQ-80. The permission split is already
-in place and tested (`payout.initiate` and `payout.approve` are held by different
-roles), but no payout can yet be raised.
-
-**Burial claims (Use Case 4)** — REQ-81 to REQ-87. The dependant table, waiting
+**Burial claims (Use Case 4)** — REQ-83 to REQ-88. The dependant table, waiting
 period and benefit schedule are all captured; assessment is not built.
+`payouts.service.js` refuses a burial society with a message that says so.
 
 **Reconciliation (Use Case 5)** — REQ-96 to REQ-98. The table exists and is seeded
 with a deliberate unexplained difference; the view is not built.
@@ -135,7 +195,7 @@ REQ-63 (penalty waiver), REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 53 automated tests, no database required
+npm test     # 196 automated tests, no database required
 npm run check  # every relative import resolves
 ```
 

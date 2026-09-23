@@ -160,8 +160,9 @@ async function createClub(input, { actor, audit }) {
                   cycle_frequency, cycle_start_date, penalty_amount,
                   grace_period_days, quorum_percentage, exit_notice_days,
                   payout_order_method, forfeiture_rule,
-                  waiting_period_days, benefit_schedule, amendment_note, adopted_by)
-             VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                  waiting_period_days, benefit_schedule,
+                  year_end_month, year_end_day, amendment_note, adopted_by)
+             VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
             [club.club_id, cycleStart,
              toNumeric(toCents(input.contributionAmount)),
              input.cycleFrequency, cycleStart,
@@ -173,6 +174,9 @@ async function createClub(input, { actor, audit }) {
              input.forfeitureRule?.trim() || null,
              input.clubType === "Burial" ? Number(input.waitingPeriodDays ?? 0) : 0,
              JSON.stringify(input.clubType === "Burial" ? (input.benefitSchedule || []) : []),
+             // REQ-79.
+             input.clubType === "Accumulating" ? Number(input.yearEndMonth) : null,
+             input.clubType === "Accumulating" ? Number(input.yearEndDay) : null,
              "Constitution as adopted at formation.",
              actor.userId]
         );

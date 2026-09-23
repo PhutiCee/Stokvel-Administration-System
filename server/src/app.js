@@ -31,6 +31,10 @@ const { healthcheck } = require("./db/pool");
 
 const authRoutes = require("./modules/auth/auth.routes");
 const clubRoutes = require("./modules/clubs/clubs.routes");
+const constitutionRoutes = require("./modules/constitution/constitution.routes");
+const payoutRoutes = require("./modules/payouts/payouts.routes");
+const queueRoutes = require("./modules/queue/queue.routes");
+const distributionRoutes = require("./modules/distributions/distributions.routes");
 const memberRoutes = require("./modules/members/members.routes");
 const contributionRoutes = require("./modules/contributions/contributions.routes");
 const ledgerRoutes = require("./modules/ledger/ledger.routes");
@@ -72,6 +76,10 @@ function createApp() {
     // 6. Feature routes. Others are mounted here as each step lands.
     app.use("/api/auth", authRoutes);
     app.use("/api/club", clubRoutes);
+    app.use("/api/constitution", constitutionRoutes);
+    app.use("/api/payouts", payoutRoutes);
+    app.use("/api/queue", queueRoutes);
+    app.use("/api/distributions", distributionRoutes);
     app.use("/api/members", memberRoutes);
     app.use("/api/cycles", contributionRoutes.cycles);
     app.use("/api/contributions", contributionRoutes.contributions);
