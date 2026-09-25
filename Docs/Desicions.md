@@ -587,3 +587,84 @@ penalty (REQ-63, not yet built), recover it before distributing, or exclude
 that member from this year's distribution by resolving their standing first.
 This is the same posture as REQ-77's arrears ruling: a case the constitution
 does not resolve on its own is handed to a human, not decided silently.
+
+---
+
+## 30. Dependant registration (REQ-37) is built inside the claims module, not its own
+
+REQ-37 (recording a club's covered dependants) was not itself part of this
+sprint's assigned scope (Rules Engine, Payout Engine, Rotating queue). It is a
+hard prerequisite for REQ-83 to REQ-88 regardless: a claim cannot be assessed
+against a dependant that the system has no way to record. Before this,
+dependant rows existed only via `db/seed.js` inserting them directly.
+
+**Delivered:** `registerDependant()` and `removeDependant()` in
+`modules/claims/claims.service.js`, not a separate `modules/dependants/`. A
+member manages their own; a Secretary, Treasurer or Chairperson may manage
+any member's, the same reasoning as officers handling paperwork on a
+member's behalf elsewhere in the system.
+
+**Why not its own module, against the one-module-per-feature convention:** a
+dependant has no purpose in this system other than being the subject of a
+future claim (migration 004's own comment: "a dependant is a person whose
+death TRIGGERS a claim"). Splitting it into a fourth module for two small
+functions seemed like more ceremony than the feature warrants. If dependants
+grow their own concerns later (photos, ID documents, a review workflow),
+splitting them out is a mechanical refactor, not a redesign.
+
+**Not built:** REQ-36, a member's own nominated beneficiaries by percentage
+share. That governs who is paid when a MEMBER dies, a different, unbuilt
+mechanism from a claim on a dependant's death, where REQ-83 already names the
+claimant as the recipient.
+
+---
+
+## 31. REQ-87's waiting period is measured against the lodgement date, not the date of death
+
+REQ-87: "a waiting period... between the admission of a member and the first
+date on which a claim may be lodged." Two readings are possible: the period
+blocks LODGING (a claim cannot be submitted until the date has passed,
+whenever the death occurred), or it blocks COVERAGE (a death occurring inside
+the window is never payable, even if the claim is lodged later).
+
+**Delivered:** the first reading, matching the requirement's own words
+("the first date on which a claim may be lodged"). `assessLodgement` compares
+today (the lodgement date) against the member's join date plus the waiting
+period, not the date of death against that figure.
+
+**Consequence:** a member who joined during the waiting period, whose
+dependant then died within it, cannot lodge immediately, but CAN once the
+period has elapsed — the death itself is not disqualified, only the timing of
+lodging it. If a stricter reading (the death itself must fall outside the
+waiting period) was intended, this is a one-line change from comparing
+`today` to comparing `dateOfDeath` in `rules/claims.js`.
+
+---
+
+## 32. A claim's own record is separate from its payout, and only one payment moves at a time
+
+A claim can fail for reasons that have nothing to do with money (REQ-84,
+REQ-85, REQ-87) before a payout is ever worth considering, and REQ-88
+requires claims to be paid in the order they were lodged, which a rotation
+payout or a distribution never had to enforce.
+
+**Delivered:** `burial_claim` (migration 013) has its own four-state
+lifecycle (Lodged, Initiated, Approved, Cancelled), separate from `payout`'s.
+Lodging performs REQ-84, REQ-85 and REQ-87's checks and, if they pass, freezes
+REQ-86's benefit amount immediately — before any Treasurer has looked at the
+pool. Only once Lodged does a claim become something `initiateClaimPayment()`
+can act on, which is where REQ-88 applies.
+
+**REQ-88's ordering is enforced by allowing only one claim payment "in
+flight" at a time** (`claim_one_open_per_club`, the same shape as
+`payout_one_open_rotation` and `distribution_one_open_per_club`), plus a
+service-level check that the claim being initiated is the oldest still-Lodged
+one. A later, smaller claim cannot be paid ahead of an earlier, larger one
+even if the pool could cover it — BR-12 is explicit that the shortfall is
+presented for resolution, not routed around.
+
+**A cancelled claim's dependant can be claimed again** (the uniqueness
+constraint on `burial_claim.dependant_id` excludes `Cancelled` rows), so an
+insufficient-pool refusal is not the end of the matter: the Treasurer can
+cancel and re-lodge once the pool recovers, the same recovery path a
+cancelled payout or distribution already has.

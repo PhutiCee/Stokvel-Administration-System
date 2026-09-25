@@ -35,6 +35,7 @@ const constitutionRoutes = require("./modules/constitution/constitution.routes")
 const payoutRoutes = require("./modules/payouts/payouts.routes");
 const queueRoutes = require("./modules/queue/queue.routes");
 const distributionRoutes = require("./modules/distributions/distributions.routes");
+const claimRoutes = require("./modules/claims/claims.routes");
 const memberRoutes = require("./modules/members/members.routes");
 const contributionRoutes = require("./modules/contributions/contributions.routes");
 const ledgerRoutes = require("./modules/ledger/ledger.routes");
@@ -80,6 +81,7 @@ function createApp() {
     app.use("/api/payouts", payoutRoutes);
     app.use("/api/queue", queueRoutes);
     app.use("/api/distributions", distributionRoutes);
+    app.use("/api/claims", claimRoutes);
     app.use("/api/members", memberRoutes);
     app.use("/api/cycles", contributionRoutes.cycles);
     app.use("/api/contributions", contributionRoutes.contributions);

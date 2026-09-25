@@ -59,7 +59,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-28 | Rotating: initial payout order method | `constitution.payout_order_method` | automated |
 | REQ-29 | Validate for internal consistency before activation | `rules/constitution.js` → `validateConsistency` | automated: grace ≥ cycle length, quorum outside 1–100, contribution ≤ 0 all refused |
 | REQ-30 | An amendment creates a new version; prior versions retained; effective date recorded | `constitution` unique on `(club_id, version)`; migration 010 triggers refuse `UPDATE` and `DELETE` and require consecutive version numbers with strictly later effective dates; `constitution.service.js` -> `createNewVersion` | database: `UPDATE`, `DELETE`, a version-number gap and a backwards effective date all raise; automated: `versioning.test.js` |
-| REQ-31 | Every rule evaluated against the version in force on the date of the transaction, not the current one | `rules/versioning.js` -> `versionInForce` (the single resolver); `constitution.service.js` -> `getVersionInForceOn`; `GET /api/constitution/in-force?date=` | automated: `versioning.test.js` (on, before and after an effective date; order independence; tie-break); `payouts.service.js` -> `assessEligibility` calls the resolver. **Partial:** the contribution and penalty code still resolve the version with their own SQL. Burial claims are not yet built |
+| REQ-31 | Every rule evaluated against the version in force on the date of the transaction, not the current one | `rules/versioning.js` -> `versionInForce` (the single resolver); `constitution.service.js` -> `getVersionInForceOn`; `GET /api/constitution/in-force?date=` | automated: `versioning.test.js` (on, before and after an effective date; order independence; tie-break); `payouts.service.js` and `claims.service.js` both call the resolver. **Partial:** the contribution and penalty code still resolve the version with their own SQL |
 | REQ-32 | An amendment takes effect only after a resolution meeting quorum and majority | `createNewVersion` exists; it has no route by design | **not met yet.** The service is ready for governance to call. It is not exposed over HTTP until Use Case 7 records the resolution, so that no officer can amend without one |
 | REQ-33 | An amendment applies prospectively only | `rules/versioning.js` -> `validateNewVersion` refuses an effective date in the past | automated: `versioning.test.js`. **Partial:** an amendment cannot be backdated, but a cycle already open when an amendment takes effect is not yet held on the old version |
 
@@ -108,9 +108,8 @@ Requirements not listed are not yet implemented. They are collected at the end.
 
 ## Payouts and payout queue (Use Case 3, rotating clubs)
 
-Rotation payouts only. Distributions (below) are also built; burial claims
-(REQ-83 to REQ-88) authorise and post through the same `payout` table once
-their own eligibility rules exist; see Not yet implemented.
+Rotation payouts only. Distributions and burial claims (below) are also
+built, each authorising and posting through the same `payout` table.
 
 | REQ | Requirement | Implemented in | Evidence |
 |---|---|---|---|
@@ -166,13 +165,43 @@ elsewhere. See decisions.md, decisions 26 to 29.
 
 ---
 
+## Burial claims (Use Case 4)
+
+REQ-37's dependants (a prerequisite this sprint did not omit, since a claim
+cannot be assessed against a dependant that cannot be recorded), REQ-83's
+lodgement, REQ-84 to REQ-87's eligibility, REQ-86's benefit resolution, and
+REQ-88's strict lodged-order payment. A claim's own lifecycle (Lodged ->
+Initiated -> Approved/Cancelled) is separate from a payout's: a claim can be
+refused at lodgement for reasons that have nothing to do with money, before a
+payout is ever considered.
+
+| REQ | Requirement | Implemented in | Evidence |
+|---|---|---|---|
+| REQ-37 | Record a club's covered dependants: name, date of birth, category from the benefit schedule | `claims.service.js` -> `registerDependant`; category checked against the constitution in force today | automated: `claims.test.js` (via `resolveBenefitAmount`); integration: an unknown category is refused, naming the categories in force |
+| REQ-83 | Lodge a claim on a deceased covered dependant: identity, date of death, supporting documentation | `claims.service.js` -> `lodgeClaim`; `POST /api/claims` | integration: a full lodgement, a future date of death, a malformed date |
+| REQ-84 | Refuse a claim where the claimant's standing is not Good standing, stating why | `rules/claims.js` -> `assessLodgement` | automated: `claims.test.js`; integration: a suspended claimant is refused |
+| REQ-85 | Refuse a claim where the deceased is not a covered dependant of the claimant | `rules/claims.js` -> `assessLodgement`; `dependant.member_id` checked against the claimant | automated + integration: another member's dependant, a dependant recorded after the death (BR-11), cover already ended before the death |
+| REQ-86 | Benefit amount from the dependant's category and the benefit schedule in the constitution in force on the date of death | `rules/claims.js` -> `resolveBenefitAmount`; resolved once, at lodgement, and frozen (`burial_claim.benefit_amount`, migration 013) | automated: `claims.test.js`; integration: the Spouse category resolves to the seeded schedule's figure exactly |
+| REQ-87 | Enforce the constitution's waiting period between a member's admission and the first date a claim may be lodged for their dependants | `rules/claims.js` -> `assessLodgement`, measured against the lodgement date, not the date of death (see decisions.md) | automated + integration: a member 95 days into a 180-day wait is refused, naming the exact eligible date |
+| REQ-88 | Process claims in lodged order; where the pool cannot meet a valid claim, present the shortfall rather than paying in part | `claims.repo.js` -> `oldestLodgedClaim`; `rules/claims.js` -> `assessClaimPayment`; `claim_one_open_per_club` (migration 013) | integration: a later-lodged claim is refused ahead of an earlier unresolved one; an insufficient pool refuses outright, BR-12, with nothing posted |
+
+**Also enforced, the same way as every other payout:** REQ-64 (dual
+authorisation, `claim_two_people`), REQ-67 (a Suspended or Expelled claimant
+is refused, re-checked at approval), REQ-70 (cancellation, with reason,
+before approval; frees the dependant for a fresh claim).
+
+**Not covered:** REQ-36 (a member's own nominated beneficiaries, by
+percentage share) is a different mechanism for a member's own eventual
+payout, not for a claim on a dependant's death, and is not built. A dependant
+whose cover has ended (`removed_at`) cannot be removed a second time, and
+cannot be removed at all once a live claim exists against them
+(`dependant_guard_claimed`, migration 013).
+
+---
+
 ## Not yet implemented
 
 Scheduled for the sprints after the preliminary release.
-
-**Burial claims (Use Case 4)** — REQ-83 to REQ-88. The dependant table, waiting
-period and benefit schedule are all captured; assessment is not built.
-`payouts.service.js` refuses a burial society with a message that says so.
 
 **Reconciliation (Use Case 5)** — REQ-96 to REQ-98. The table exists and is seeded
 with a deliberate unexplained difference; the view is not built.
@@ -195,7 +224,7 @@ REQ-63 (penalty waiver), REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 196 automated tests, no database required
+npm test     # 226 automated tests, no database required
 npm run check  # every relative import resolves
 ```
 

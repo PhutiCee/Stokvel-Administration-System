@@ -73,7 +73,8 @@ const TENANT_SCOPED_TABLES = [
     "payout",
     "queue_swap",
     "queue_arrears_decision",
-    "distribution"
+    "distribution",
+    "burial_claim"
 ];
 
 const TABLE_PATTERN = new RegExp(

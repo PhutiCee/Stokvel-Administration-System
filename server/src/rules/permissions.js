@@ -18,7 +18,9 @@ const MATRIX = {
     Member: [
         "view.dashboard", "view.ownStatement", "view.queue",
         "view.constitution", "view.pool", "claim.lodge", "assistant.ask",
-        "queue.requestSwap", "queue.consentSwap"
+        "queue.requestSwap", "queue.consentSwap",
+        // REQ-37. A member records and can end cover for their own dependants.
+        "dependant.manage"
     ],
     Treasurer: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -34,7 +36,10 @@ const MATRIX = {
         // same way they capture contributions and levy penalties as they
         // occur.
         "distribution.view", "distribution.initiate", "distribution.cancel",
-        "distribution.recordFinancials"
+        "distribution.recordFinancials",
+        // REQ-83 to REQ-88, Use Case 4. The Treasurer starts paying a lodged
+        // claim, the same role that initiates any other payout.
+        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage"
     ],
     Secretary: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -42,7 +47,7 @@ const MATRIX = {
         "member.register", "member.amend", "member.revealId", "member.assignRole",
         "governance.record", "assistant.ask",
         "payout.view", "queue.requestSwap", "queue.consentSwap",
-        "distribution.view"
+        "distribution.view", "claim.view", "dependant.manage"
     ],
     Chairperson: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -51,6 +56,9 @@ const MATRIX = {
         // REQ-82. The Chairperson approves a year-end distribution the same
         // way they approve any other payout.
         "distribution.view", "distribution.approve",
+        // REQ-64, REQ-88. The Chairperson approves a claim's payment the same
+        // way they approve any other payout.
+        "claim.view", "claim.approve", "dependant.manage",
         // Use Case 3. The Chairperson approves payouts and exchanges of
         // position, rules on a member in arrears at the head of the queue
         // (REQ-77) and runs the draw that sets the order (REQ-71). Requesting
