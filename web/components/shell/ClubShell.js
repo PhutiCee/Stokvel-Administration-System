@@ -16,7 +16,10 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText } from "lucide-react";
+import {
+  LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText,
+  Wallet, ListOrdered, PiggyBank, HeartHandshake
+} from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
@@ -25,9 +28,18 @@ import { cx, initials } from "@/lib/format";
 // Ordered by how often each is opened, not by importance. "My statement" sits
 // among them rather than tucked under an account menu, because for an ordinary
 // member it is the only page they came for.
+//
+// clubType is checked alongside permission: a page built for one kind of club
+// (the payout queue, a year-end distribution, a burial claim) has nothing to
+// show a member of a different kind, so it does not appear for them at all —
+// the same reasoning the API applies when it refuses those routes outright.
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view.dashboard" },
   { href: "/contributions", label: "Contributions", icon: Receipt, permission: "view.dashboard" },
+  { href: "/payouts", label: "Payouts", icon: Wallet, permission: "payout.view", clubType: "Rotating" },
+  { href: "/queue", label: "Queue", icon: ListOrdered, permission: "view.queue", clubType: "Rotating" },
+  { href: "/distributions", label: "Distributions", icon: PiggyBank, permission: "distribution.view", clubType: "Accumulating" },
+  { href: "/claims", label: "Claims", icon: HeartHandshake, permission: "claim.lodge", clubType: "Burial" },
   { href: "/members", label: "Members", icon: Users, permission: "view.members" },
   { href: "/statement", label: "My statement", icon: FileText, permission: "view.ownStatement" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" }
@@ -39,7 +51,7 @@ export default function ClubShell({ children }) {
   const { user, club, role, can, signOut } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const items = NAV.filter((n) => can(n.permission));
+  const items = NAV.filter((n) => can(n.permission) && (!n.clubType || n.clubType === club?.clubType));
 
   async function handleSignOut() {
     await signOut();

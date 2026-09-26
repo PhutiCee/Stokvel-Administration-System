@@ -131,6 +131,55 @@ export const ledger = {
     api.get(memberId ? `/api/ledger/statement/${memberId}` : "/api/ledger/statement", opts)
 };
 
+// --- Use Case 3, rotating clubs --------------------------------------------
+export const payouts = {
+  list: (opts) => api.get("/api/payouts", opts),
+  next: (opts) => api.get("/api/payouts/next", opts),
+  get: (payoutId, opts) => api.get(`/api/payouts/${payoutId}`, opts),
+  initiate: (memberId) => api.post("/api/payouts", memberId ? { memberId } : {}),
+  approve: (payoutId) => api.post(`/api/payouts/${payoutId}/approve`),
+  cancel: (payoutId, reason) => api.post(`/api/payouts/${payoutId}/cancel`, { reason })
+};
+
+export const queue = {
+  get: (opts) => api.get("/api/queue", opts),
+  mine: (opts) => api.get("/api/queue/me", opts),
+  establish: (order) => api.post("/api/queue/establish", order ? { order } : {}),
+  requestSwap: (withMemberId) => api.post("/api/queue/swaps", { withMemberId }),
+  consentToSwap: (swapId, consent) => api.post(`/api/queue/swaps/${swapId}/consent`, { consent }),
+  approveSwap: (swapId) => api.post(`/api/queue/swaps/${swapId}/approve`),
+  rejectSwap: (swapId, reason) => api.post(`/api/queue/swaps/${swapId}/reject`, { reason }),
+  cancelSwap: (swapId) => api.post(`/api/queue/swaps/${swapId}/cancel`),
+  resolveArrears: (memberId, decision, reason) =>
+    api.post("/api/queue/arrears-ruling", { memberId, decision, reason })
+};
+
+// --- Use Case 3, accumulating clubs -----------------------------------------
+export const distributions = {
+  list: (opts) => api.get("/api/distributions", opts),
+  next: (opts) => api.get("/api/distributions/next", opts),
+  get: (distributionId, opts) => api.get(`/api/distributions/${distributionId}`, opts),
+  initiate: () => api.post("/api/distributions", {}),
+  approve: (distributionId) => api.post(`/api/distributions/${distributionId}/approve`),
+  cancel: (distributionId, reason) => api.post(`/api/distributions/${distributionId}/cancel`, { reason }),
+  recordInterest: (amount, description) => api.post("/api/distributions/interest", { amount, description }),
+  recordExpense: (amount, description) => api.post("/api/distributions/expense", { amount, description })
+};
+
+// --- Use Case 4, burial societies -------------------------------------------
+export const claims = {
+  list: (opts) => api.get("/api/claims", opts),
+  mine: (opts) => api.get("/api/claims/mine", opts),
+  get: (claimId, opts) => api.get(`/api/claims/${claimId}`, opts),
+  lodge: (details) => api.post("/api/claims", details),
+  initiate: (claimId) => api.post(`/api/claims/${claimId}/initiate`),
+  approve: (claimId) => api.post(`/api/claims/${claimId}/approve`),
+  cancel: (claimId, reason) => api.post(`/api/claims/${claimId}/cancel`, { reason }),
+  myDependants: (opts) => api.get("/api/claims/dependants/mine", opts),
+  registerDependant: (details) => api.post("/api/claims/dependants", details),
+  removeDependant: (dependantId) => api.post(`/api/claims/dependants/${dependantId}/remove`)
+};
+
 export const platform = {
   overview: (opts) => api.get("/api/platform", opts),
   createClub: (details) => api.post("/api/platform/clubs", details),
