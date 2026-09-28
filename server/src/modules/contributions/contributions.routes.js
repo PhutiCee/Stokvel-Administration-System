@@ -17,10 +17,15 @@
  */
 
 const express = require("express");
+const multer = require("multer");
 const service = require("./contributions.service");
 const { requireClubContext } = require("../../middleware/tenancy");
 const { authorize } = require("../../middleware/authorize");
 const { asyncRoute } = require("../../middleware/errors");
+
+// REQ-53: 5 MB, held in memory only for the length of the request — nothing is
+// ever written to local disk, so there is no temp file to clean up or leak.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // --- /api/cycles -----------------------------------------------------------
 const cycles = express.Router();
@@ -71,6 +76,52 @@ contributions.post("/:contributionId/capture", authorize("contribution.capture")
             req.db, req.params.contributionId, req.body || {},
             { actor: req.actor, audit: req.audit }
         );
+        res.json(result);
+    })
+);
+
+contributions.post("/penalties/:penaltyId/waive", authorize("penalty.waive"),
+    asyncRoute(async (req, res) => {
+        const result = await service.waivePenalty(
+            req.db, req.params.penaltyId, req.body || {},
+            { actor: req.actor, audit: req.audit }
+        );
+        res.json(result);
+    })
+);
+
+// --- proof of payment (REQ-51 to REQ-53) ------------------------------------
+
+contributions.post("/:contributionId/proof", authorize("contribution.capture"),
+    upload.single("file"),
+    asyncRoute(async (req, res) => {
+        const result = await service.uploadProof(
+            req.db, req.params.contributionId, req.file,
+            { actor: req.actor, audit: req.audit }
+        );
+        res.status(201).json(result);
+    })
+);
+
+contributions.get("/:contributionId/proof", authorize("view.dashboard"),
+    asyncRoute(async (req, res) => {
+        const meta = await service.getProofMeta(req.db, req.params.contributionId);
+        res.json({ proof: meta });
+    })
+);
+
+contributions.get("/:contributionId/proof/file", authorize("view.dashboard"),
+    asyncRoute(async (req, res) => {
+        const file = await service.downloadProof(req.db, req.params.contributionId);
+        res.setHeader("Content-Type", file.mime_type);
+        res.setHeader("Content-Disposition", `inline; filename="${file.original_filename.replace(/"/g, "")}"`);
+        res.send(file.file_data);
+    })
+);
+
+contributions.post("/:contributionId/proof/delete", authorize("contribution.capture"),
+    asyncRoute(async (req, res) => {
+        const result = await service.deleteProof(req.db, req.params.contributionId, { actor: req.actor, audit: req.audit });
         res.json(result);
     })
 );

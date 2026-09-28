@@ -200,6 +200,94 @@ async function settlePenalty(tx, penaltyId, settledAmount) {
     );
 }
 
+// --- waiver (REQ-63, BR-13) -------------------------------------------------
+
+async function getPenalty(db, penaltyId) {
+    return db.one(
+        `SELECT p.*, u.full_name, c.sequence_number
+           FROM penalty p
+           JOIN member m ON m.member_id = p.member_id
+           JOIN user_account u ON u.user_id = m.user_id
+           LEFT JOIN cycle c ON c.cycle_id = p.cycle_id
+          WHERE p.club_id = $1 AND p.penalty_id = $2`,
+        [db.clubId, penaltyId]
+    );
+}
+
+/** The entry posted when this penalty was levied. Never the reversal itself. */
+async function getPenaltyLedgerEntry(db, penaltyId) {
+    return db.one(
+        `SELECT entry_id, amount FROM ledger_entry
+          WHERE club_id = $1 AND penalty_id = $2 AND entry_type = 'Penalty' AND reverses_id IS NULL`,
+        [db.clubId, penaltyId]
+    );
+}
+
+async function markWaived(db, penaltyId, { waivedBy, reason }) {
+    await db.query(
+        `UPDATE penalty SET waived_at = now(), waived_by = $3, waiver_reason = $4
+          WHERE club_id = $1 AND penalty_id = $2`,
+        [db.clubId, penaltyId, waivedBy, reason]
+    );
+}
+
+// --- proof of payment (REQ-51 to REQ-53) ------------------------------------
+
+/**
+ * Replaces whatever was there before — a Treasurer may upload a clearer copy.
+ * Called by the service inside its own transaction, the same as every other
+ * multi-statement repo function in this file.
+ *
+ * contribution.proof_url (migration 005, "SDD 5.3: object storage reference")
+ * predates this table and was written for a design that keeps the file in
+ * external object storage and only a URL here. Without such a service
+ * configured, the file is instead stored in proof_of_payment, and proof_url is
+ * kept in step anyway, pointing at this API's own download route, so the
+ * column still means what its comment says: where to fetch the file from.
+ */
+async function upsertProof(tx, contributionId, { fileData, mimeType, originalFilename, fileSize, uploadedBy }) {
+    const saved = await tx.one(
+        `INSERT INTO proof_of_payment
+             (club_id, contribution_id, file_data, mime_type, original_filename, file_size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (contribution_id) DO UPDATE SET
+             file_data = EXCLUDED.file_data, mime_type = EXCLUDED.mime_type,
+             original_filename = EXCLUDED.original_filename, file_size = EXCLUDED.file_size,
+             uploaded_by = EXCLUDED.uploaded_by, uploaded_at = now()
+         RETURNING proof_id, mime_type, original_filename, file_size, uploaded_at`,
+        [tx.clubId, contributionId, fileData, mimeType, originalFilename, fileSize, uploadedBy]
+    );
+    await tx.query(
+        `UPDATE contribution SET proof_url = $3 WHERE club_id = $1 AND contribution_id = $2`,
+        [tx.clubId, contributionId, `/api/contributions/${contributionId}/proof/file`]
+    );
+    return saved;
+}
+
+/** Metadata only — for showing that a proof exists, without pulling the bytes. */
+async function getProofMeta(db, contributionId) {
+    return db.one(
+        `SELECT proof_id, mime_type, original_filename, file_size, uploaded_at, uploaded_by
+           FROM proof_of_payment WHERE club_id = $1 AND contribution_id = $2`,
+        [db.clubId, contributionId]
+    );
+}
+
+/** The bytes themselves, for download. */
+async function getProofFile(db, contributionId) {
+    return db.one(
+        `SELECT file_data, mime_type, original_filename
+           FROM proof_of_payment WHERE club_id = $1 AND contribution_id = $2`,
+        [db.clubId, contributionId]
+    );
+}
+
+/** Called by the service inside its own transaction. */
+async function deleteProof(tx, contributionId) {
+    await tx.query(`DELETE FROM proof_of_payment WHERE club_id = $1 AND contribution_id = $2`, [tx.clubId, contributionId]);
+    await tx.query(`UPDATE contribution SET proof_url = NULL WHERE club_id = $1 AND contribution_id = $2`, [tx.clubId, contributionId]);
+}
+
 /**
  * REQ-56: post the penalty once only for a given member and cycle.
  *
@@ -243,5 +331,7 @@ module.exports = {
     openCycleFor, getCycle, nextSequenceNumber, createCycle, membersForNewCycle, listCycles,
     insertExpected, listForCycle, getContribution, applyCapture, setStatus, priorOutstanding,
     unsettledPenalties, settlePenalty, levyPenalty,
+    getPenalty, getPenaltyLedgerEntry, markWaived,
+    upsertProof, getProofMeta, getProofFile, deleteProof,
     addCredit, getMemberCredit
 };

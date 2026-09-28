@@ -761,3 +761,36 @@ Consistent with how contribution-amount and cycle-open validation are also
 service-layer only, this was left there rather than added as a
 counting-trigger, which would be considerably more machinery for a rule that
 is not protecting money or an audit trail.
+
+---
+
+## 35. Proof-of-payment files are stored as bytes in the database, not in object storage
+
+`contribution.proof_url` (migration 005) was written with the comment "SDD
+5.3: object storage reference": the original design assumed the file would
+live in something like S3 and only its address would be kept here. The
+project has no such service, and no budget for one.
+
+**Delivered:** the file is stored as `BYTEA` in a new `proof_of_payment`
+table (migration 015), one row per contribution. `proof_url` is still set, to
+this API's own download route (`/api/contributions/:id/proof/file`), so the
+column keeps the meaning its comment gave it, "where to fetch the file
+from", rather than being left null next to a second, unrelated mechanism.
+
+**Why this is acceptable here:** REQ-53's own limits (5 MB, JPEG, PNG or PDF
+only) keep any one file small and bounded, and the table is written to by
+one officer role, not by every member. It would stop being acceptable at
+volume: a club uploading a receipt for every contribution for years would
+grow the database's size, backup time and memory use in a way object storage
+would not. Moving to object storage later means changing `upsertProof` and
+`getProofFile` in `contributions.repo.js` and nothing above them.
+
+**Replacement, not accumulation:** a second upload for the same contribution
+replaces the first (`UNIQUE` on `contribution_id`). A Treasurer needs to be
+able to swap a blurry photo for a clear one. The proof is supporting
+evidence, not a financial record, so it is deliberately not made immutable
+the way the ledger, a payout or a claim is.
+
+**Held in memory, never on disk:** `multer` is configured with
+`memoryStorage`, so an upload exists only for the length of the request and
+there is no temp file to clean up.

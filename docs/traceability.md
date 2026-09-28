@@ -84,7 +84,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-50 | Expected record for every member **in good standing** at cycle commencement | `contributions.service.js` → `openCycle`, `repo.membersForNewCycle` | manual |
 | REQ-51 | Capture amount, receipt date and method | `contributions.service.js` → `captureContribution` | automated (guards); manual (capture) |
 | REQ-52 | An electronic transfer must carry its reference | `rules/contributions.js` → `checkMethod` | automated |
-| REQ-53 | Proof-of-payment upload | `contribution.proof_url` column exists; upload not built | **partial** |
+| REQ-53 | Upload a proof-of-payment file against a captured contribution: JPEG, PNG or PDF, at most 5 MB | `contributions.service.js` -> `uploadProof`, `downloadProof`, `deleteProof`; `POST/GET /api/contributions/:id/proof`; migration 015 (`proof_of_payment`, bytes stored in the database, type and size both checked again by CHECK constraints); `contribution.proof_url` kept in step | integration: an oversized file and a disallowed type are each refused with nothing stored; the exact bytes come back on download; a second upload replaces the first rather than accumulating; `proof_url` is set on upload and cleared on delete |
 | REQ-54 | Status from the named set, recomputed on every capture | `rules/contributions.js` → `resolveStatus`; also recomputed on read | automated: nine boundary cases |
 | REQ-55 | Outstanding until due; Late once due date and grace have both elapsed | `resolveStatus` | automated: grace runs to the end of its last day |
 | REQ-56 | Penalty posted automatically on resolving to Late, once only | `captureContribution` uses the status **before** the payment; migration 009 unique index | database: `penalty_one_per_member_cycle`; manual: paying late in full still incurs it, twice does not |
@@ -203,7 +203,7 @@ cannot be removed at all once a live claim exists against them
 
 ## Not yet implemented
 
-Scheduled for the sprints after the preliminary release.
+Scheduled for the sprints after the preliminary release. The full, task-by-task list with sizes and suggested order is in `docs/remaining-work.md`.
 
 **Reconciliation (Use Case 5)** — REQ-96 to REQ-98. The table exists and is seeded
 with a deliberate unexplained difference; the view is not built.
@@ -218,7 +218,7 @@ with a deliberate unexplained difference; the view is not built.
 despatched yet; the lockout is recorded in the audit log instead.
 
 **Also outstanding:** REQ-3 (federated sign-in), REQ-11 (password re-entry for
-sensitive operations), REQ-53 (proof-of-payment upload), REQ-58 (batch capture),
+sensitive operations), REQ-58 (batch capture),
 REQ-100 (export).
 
 ---
