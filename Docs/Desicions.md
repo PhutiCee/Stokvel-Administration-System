@@ -668,3 +668,96 @@ constraint on `burial_claim.dependant_id` excludes `Cancelled` rows), so an
 insufficient-pool refusal is not the end of the matter: the Treasurer can
 cancel and re-lodge once the pool recovers, the same recovery path a
 cancelled payout or distribution already has.
+
+---
+
+## 33. Waiving a penalty reverses the full original amount, regardless of settled_amount
+
+REQ-63 says a waiver posts "a reversing entry rather than deleting the
+original penalty." What it does not say is how a waiver interacts with
+`penalty.settled_amount`, an existing field the original team built so that
+an excess payment can pay down a penalty over time (`applyExcess`,
+`contributions.service.js`) without posting a second ledger entry for it.
+
+**Delivered:** `waivePenalty()` reverses the FULL amount of the original
+`Penalty` ledger entry, unconditionally. `settled_amount` is left exactly as
+it is.
+
+**Why:** the cash that ever actually moved for this penalty is the single
+entry posted when it was levied (REQ-56). `settled_amount` does not
+correspond to a second movement of money — it is a bookkeeping marker for
+when a member's arrears are considered cleared, updated by
+`applyExcess` without a ledger entry of its own. Reversing "what is left
+outstanding" rather than "what was originally levied" would need a second
+source of truth for an amount that the ledger itself never split in two.
+
+**A real edge case this does not resolve:** if a penalty was already fully or
+partly settled by an excess payment before being waived, waiving it still
+reverses the whole original amount. The member's earlier excess payment
+already reduced what they owed elsewhere; the waiver now also gives back
+the full penalty. Whether that is double relief or is exactly the
+Chairperson's intent depends on the case — REQ-63 does not say waiving is
+refused or reduced when a penalty is partly settled, so this implementation
+does not invent a restriction. Worth a second opinion before relying on it
+for a penalty that has already been part-settled.
+
+---
+
+## 34. Officer role caps: added at the club's request, not from the SRS — and deliberately narrower than what was first asked for
+
+The club asked for three related rules: (1) officer counts that scale with
+club size, (2) a Chairperson-led club creation flow requiring Platform
+Administrator approval, (3) a rule that a Treasurer, Chairperson or Secretary
+of one club may only be an ordinary Member of any other. Only (1) is built.
+
+**(2) and (3) were not built because they contradict requirements already in
+the SRS, already implemented, and already covered by tests:**
+
+- REQ-18: *"The system shall permit only the Platform Administrator to
+  create a club."* Reversing this to let a Chairperson create their own club
+  is a deliberate change to a graded requirement, not a gap-fill. It was
+  flagged back to the club rather than built silently.
+- REQ-10: *"The system shall permit a user to hold different roles in
+  different clubs."* The seed data's own flagship scenario (Nomsa Maluleke,
+  Treasurer of one club and an ordinary member of another) exists specifically
+  to demonstrate this. A cross-club exclusivity rule would need that scenario
+  rewritten, not just a new check added.
+
+Both are one-line rule changes if the club decides, after discussion, that
+their SRS should actually say something different — but that is a decision
+for the group to make together, not one an AI assistant should make by
+quietly overriding a requirement someone else wrote.
+
+**(1) has no such conflict, so it was built.** The thresholds:
+
+| Role | Cap |
+|---|---|
+| Chairperson | exactly 1, always |
+| Treasurer | 1 + one more per 100 active members |
+| Secretary | 1 + one more per 150 active members |
+
+**Chairperson at exactly one is not arbitrary:** BR-2's dual authorisation
+(a payout, distribution or claim needs a different account to approve it)
+depends on there being one Chairperson whose approval means something
+specific. A second Chairperson would not break anything mechanically, but it
+muddies who "the other account" actually is.
+
+**Treasurer and Secretary's numbers are a judgement call the club asked for
+directly** ("think of any logical allocation" for Secretary). Treasurer
+scales with headcount because that role's work (capturing contributions,
+initiating payouts) genuinely grows with membership. Secretary's work
+(minutes, announcements, membership records) does not scale with headcount
+in the same way — tying it to headcount anyway, at a looser ratio, was
+offered as the simpler of two options discussed and is easier to defend to a
+marker than a governance-activity metric that does not exist yet. Both
+numbers live in exactly one place (`rules/officers.js` -> `maxHoldersFor`)
+and are not copied anywhere else, so revising them later is a one-function
+change.
+
+**Not enforced at the database.** Unlike money-integrity rules (the ledger,
+a payout, a distribution, a claim), nothing here is a financial record that
+must never quietly change; it is a convenience constraint on assigning roles.
+Consistent with how contribution-amount and cycle-open validation are also
+service-layer only, this was left there rather than added as a
+counting-trigger, which would be considerably more machinery for a rule that
+is not protecting money or an audit trail.

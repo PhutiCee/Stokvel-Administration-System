@@ -75,6 +75,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-42 | A new member joins the end of the rotating queue | `members.repo.js` → `nextQueuePosition` | manual |
 | REQ-43 | Only the Secretary or the Chairperson may register, amend and assign roles | `rules/permissions.js` | automated: `rules.test.js` asserts both roles hold all three |
 | REQ-49 | A club must always have a Chairperson and a Treasurer | `members.service.js` → `assignRole` refuses the last holder; `createClub` appoints a chairperson at formation | manual: demoting the only Treasurer is refused, naming the requirement |
+| — | **Not an SRS requirement.** Officer roles are capped by club size: Chairperson always exactly one; Treasurer and Secretary scale with active membership | `rules/officers.js` → `maxHoldersFor`, `assessRoleCapacity`; applied in both `assignRole` and `registerMember` | automated: `officers.test.js`; integration: a second Treasurer refused under 100 members, allowed at 100+, a third still refused under 200; Chairperson capped at one regardless of size; a new member registered directly into an at-capacity role is refused with nothing created. See decisions.md, decision 34 |
 
 ## Use Case 2 — Contributions
 
@@ -90,6 +91,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-57 | Excess applied to penalty, then prior arrears oldest first, then credit | `contributions.service.js` → `applyExcess` | manual: R2 000 against a R500 cycle splits across all three tiers, in order |
 | REQ-59 | Refuse capture against a closed cycle | `captureContribution` | manual: `RULE_REFUSAL` naming the reversing-entry route |
 | REQ-60 | Refuse an amount of zero or less | `rules/contributions.js` → `checkCaptureAmount` | automated |
+| REQ-63 | Chairperson may waive a penalty; a reason is required; posted as a reversing entry, never a deletion | `rules/penalties.js` → `assessWaiver`; `contributions.service.js` → `waivePenalty`; migration 014 | automated: `penalties.test.js`; database: a waiver with no reason raises `23514`, and a recorded waiver cannot be reworded or undone (`23001`); integration: the reversing entry exactly undoes the original amount, one reversal per entry, BR-13's double-waiver refused |
 
 ## Ledger
 
@@ -217,14 +219,14 @@ despatched yet; the lockout is recorded in the audit log instead.
 
 **Also outstanding:** REQ-3 (federated sign-in), REQ-11 (password re-entry for
 sensitive operations), REQ-53 (proof-of-payment upload), REQ-58 (batch capture),
-REQ-63 (penalty waiver), REQ-100 (export).
+REQ-100 (export).
 
 ---
 
 ## Running the evidence
 
 ```bash
-npm test     # 226 automated tests, no database required
+npm test     # 243 automated tests, no database required
 npm run check  # every relative import resolves
 ```
 
