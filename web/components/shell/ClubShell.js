@@ -18,7 +18,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText,
-  Wallet, ListOrdered, PiggyBank, HeartHandshake, MessageCircle, Bell
+  Wallet, ListOrdered, PiggyBank, HeartHandshake, MessageCircle, Bell, Scale
 } from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
@@ -44,6 +44,7 @@ const NAV = [
   { href: "/members", label: "Members", icon: Users, permission: "view.members" },
   { href: "/statement", label: "My statement", icon: FileText, permission: "view.ownStatement" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" },
+  { href: "/reconciliation", label: "Reconciliation", icon: Scale, permission: "view.reconciliation" },
   { href: "/assistant", label: "Assistant", icon: MessageCircle, permission: "assistant.ask" }
 ];
 
