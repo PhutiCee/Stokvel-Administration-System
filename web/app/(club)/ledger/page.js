@@ -22,6 +22,8 @@ const TYPE_TONE = {
   Penalty: "attention",
   Payout: "neutral",
   Claim: "neutral",
+  Interest: "positive",
+  Expense: "attention",
   Reversal: "exception",
   Adjustment: "attention"
 };

@@ -19,6 +19,7 @@ const { toCents, toNumeric, format } = require("../../lib/money");
 const {
     resolveStatus, lateFrom, penaltyIsDue, checkCaptureAmount, checkMethod
 } = require("../../rules/contributions");
+const { assessWaiver } = require("../../rules/penalties");
 const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
 
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
@@ -457,10 +458,172 @@ async function getCycleDetail(db, cycleId) {
     };
 }
 
+// ---------------------------------------------------------------------------
+// waivePenalty()  REQ-63, BR-13
+// ---------------------------------------------------------------------------
+
+/**
+ * Waives a penalty. The Chairperson-only permission is enforced by the route
+ * (penalty.waive); this function trusts that it has already been checked, the
+ * same way every other service in this codebase trusts its route.
+ *
+ * The penalty is never deleted and its amount is never edited (REQ-90's own
+ * rule, extended here to the penalty record itself, migration 014). Instead:
+ * the original 'Penalty' ledger entry is reversed with an opposing entry
+ * (REQ-63's own wording — "a reversing entry rather than by deleting the
+ * original penalty"), and the penalty row is marked waived, with the reason,
+ * once, permanently (the database enforces this even bypassing the service).
+ */
+async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
+    const outcome = await withClubTransaction(db.clubId, async (tx, client) => {
+        const penalty = await repo.getPenalty(tx, penaltyId);
+        if (!penalty) return { notFound: true };
+
+        const assessment = assessWaiver({ alreadyWaived: !!penalty.waived_at, reason });
+        if (!assessment.eligible) {
+            return { refused: assessment.refusals.map((r) => r.message).join(" "), detail: { refusals: assessment.refusals }, penalty };
+        }
+
+        const original = await repo.getPenaltyLedgerEntry(tx, penaltyId);
+        if (!original) {
+            // Defensive: every levied penalty posts its own entry (see the
+            // comment in captureContribution). Nothing in this codebase can
+            // reach this branch, but a silent no-op would be worse than a
+            // clear error if it ever did.
+            return { refused: "No ledger entry was found for this penalty. It cannot be waived without one to reverse.", detail: {} };
+        }
+
+        const entry = await ledger.appendEntry(client, {
+            clubId: tx.clubId,
+            memberId: penalty.member_id,
+            entryType: "Reversal",
+            amount: toNumeric(-toCents(original.amount)),
+            description: `Waived penalty${penalty.sequence_number ? `, cycle ${penalty.sequence_number}` : ""} — ${penalty.full_name}: ${String(reason).trim()}`,
+            reversesId: original.entry_id,
+            reason: String(reason).trim(),
+            penaltyId,
+            postedBy: actor.userId
+        });
+
+        await repo.markWaived(tx, penaltyId, { waivedBy: actor.userId, reason: String(reason).trim() });
+        return { penalty, entry };
+    });
+
+    if (outcome.notFound) throw new NotFound("That penalty was not found in this club.");
+    if (outcome.refused) {
+        await audit("penalty.waive", "Refused", {
+            detail: `Refused: ${outcome.refused}`,
+            targetType: "penalty",
+            targetId: penaltyId
+        });
+        throw new RuleRefusal(outcome.refused, outcome.detail);
+    }
+
+    await audit("penalty.waive", "Success", {
+        detail:
+            `${actor.fullName} waived the penalty of ${format(toCents(outcome.penalty.amount))} against ` +
+            `${outcome.penalty.full_name}. Reason: ${String(reason).trim()}. Pool balance now ${format(toCents(outcome.entry.resultingBalance))}.`,
+        targetType: "penalty",
+        targetId: penaltyId
+    });
+
+    return {
+        penaltyId,
+        waivedAt: new Date().toISOString(),
+        waivedBy: actor.fullName,
+        reason: String(reason).trim(),
+        reversingEntryId: outcome.entry.entryId,
+        resultingBalance: outcome.entry.resultingBalance
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Proof of payment. REQ-51 to REQ-53.
+// ---------------------------------------------------------------------------
+
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // REQ-53: 5 MB
+
+/**
+ * @param {object} file  { buffer, mimetype, originalname, size } — multer's shape,
+ *                       passed through rather than re-declared to avoid a second
+ *                       definition of what a file upload looks like.
+ */
+async function uploadProof(db, contributionId, file, { actor, audit }) {
+    const contribution = await repo.getContribution(db, contributionId);
+    if (!contribution) throw new NotFound("That contribution was not found in this club.");
+
+    if (!file) throw new BadRequest("Attach a file.");
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        throw new BadRequest("Only JPEG, PNG or PDF files are accepted (REQ-53).");
+    }
+    if (file.size > MAX_FILE_SIZE) {
+        throw new BadRequest(`That file is too large. The limit is 5 MB (REQ-53); this one is ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
+    }
+
+    const saved = await withClubTransaction(db.clubId, (tx) => repo.upsertProof(tx, contributionId, {
+        fileData: file.buffer,
+        mimeType: file.mimetype,
+        originalFilename: file.originalname.slice(0, 255),
+        fileSize: file.size,
+        uploadedBy: actor.userId
+    }));
+
+    await audit("contribution.uploadProof", "Success", {
+        detail: `${actor.fullName} attached ${saved.original_filename} (${(saved.file_size / 1024).toFixed(0)} KB) as proof of payment for ${contribution.full_name}'s contribution.`,
+        targetType: "contribution",
+        targetId: contributionId
+    });
+
+    return {
+        proofId: saved.proof_id,
+        filename: saved.original_filename,
+        mimeType: saved.mime_type,
+        fileSize: saved.file_size,
+        uploadedAt: saved.uploaded_at
+    };
+}
+
+async function getProofMeta(db, contributionId) {
+    const meta = await repo.getProofMeta(db, contributionId);
+    if (!meta) return null;
+    return {
+        proofId: meta.proof_id,
+        filename: meta.original_filename,
+        mimeType: meta.mime_type,
+        fileSize: meta.file_size,
+        uploadedAt: meta.uploaded_at
+    };
+}
+
+/** The raw bytes for a download response. Route sets the content type and disposition. */
+async function downloadProof(db, contributionId) {
+    const file = await repo.getProofFile(db, contributionId);
+    if (!file) throw new NotFound("No proof of payment has been uploaded for this contribution.");
+    return file;
+}
+
+async function deleteProof(db, contributionId, { actor, audit }) {
+    const meta = await repo.getProofMeta(db, contributionId);
+    if (!meta) throw new NotFound("No proof of payment has been uploaded for this contribution.");
+    await withClubTransaction(db.clubId, (tx) => repo.deleteProof(tx, contributionId));
+    await audit("contribution.deleteProof", "Success", {
+        detail: `${actor.fullName} removed the proof of payment (${meta.original_filename}).`,
+        targetType: "contribution",
+        targetId: contributionId
+    });
+    return { deleted: true };
+}
+
 module.exports = {
     openCycle,
     captureContribution,
     applyExcess,
     listCycles,
-    getCycleDetail
+    getCycleDetail,
+    waivePenalty,
+    uploadProof,
+    getProofMeta,
+    downloadProof,
+    deleteProof
 };

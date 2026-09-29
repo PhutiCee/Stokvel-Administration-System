@@ -21,6 +21,7 @@ const { hashPassword } = require("../../lib/password");
 const { temporaryPassword } = require("../../lib/tempPassword");
 const { normalisePhone } = require("../auth/auth.repo");
 const { toCents, toNumeric, format } = require("../../lib/money");
+const { assessRoleCapacity } = require("../../rules/officers");
 const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
 
 const ROLES = ["Chairperson", "Treasurer", "Secretary", "Member"];
@@ -196,6 +197,21 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
     const role = input.role || "Member";
     const club = await repo.clubType(db);
 
+    // BR-officer-capacity: a new member registered directly into an officer
+    // role is capped the same way assignRole() caps moving an existing member
+    // into one. Not an SRS requirement — see decisions.md. activeMemberCount
+    // counts this member as already joined, since they are about to be.
+    if (role !== "Member") {
+        const [currentHolders, activeMemberCount] = await Promise.all([
+            repo.countHoldersOfRole(db, role),
+            repo.countActiveMembers(db).then((n) => n + 1)
+        ]);
+        const capacity = assessRoleCapacity({ role, currentHolders, activeMemberCount });
+        if (!capacity.eligible) {
+            throw new RuleRefusal(capacity.refusals[0].message, { requirement: capacity.refusals[0].requirement, role });
+        }
+    }
+
     // REQ-39: reuse the existing account if this person is already on the
     // system through another club.
     const existing = await repo.findAccountByIdOrPhone(input.idNumber, phone);
@@ -329,6 +345,26 @@ async function assignRole(db, memberId, newRole, { actor, audit }) {
                 `a club may not be left without one.`,
                 { requirement: "REQ-49", role: member.role }
             );
+        }
+    }
+
+    // BR-officer-capacity: moving this member INTO an officer role is refused
+    // once the club already has as many as its size allows. Not an SRS
+    // requirement — see decisions.md.
+    if (newRole !== "Member") {
+        const [currentHolders, activeMemberCount] = await Promise.all([
+            repo.countHoldersOfRole(db, newRole),
+            repo.countActiveMembers(db)
+        ]);
+        const capacity = assessRoleCapacity({ role: newRole, currentHolders, activeMemberCount });
+        if (!capacity.eligible) {
+            const reason = capacity.refusals[0];
+            await audit("member.assignRole", "Refused", {
+                detail: `Refused: ${reason.message}`,
+                targetType: "member",
+                targetId: memberId
+            });
+            throw new RuleRefusal(reason.message, { requirement: reason.requirement, role: newRole });
         }
     }
 

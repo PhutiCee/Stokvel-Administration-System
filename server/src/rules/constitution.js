@@ -134,6 +134,22 @@ function validateConsistency(c) {
         }
     }
 
+    // REQ-79: an accumulating club distributes on a recurring calendar date
+    // named in the constitution. A day is stored as-is and clamped to the last
+    // valid day of whichever month it falls in for a given year (lib/dates.js
+    // -> yearEndDateFor), the same way 31 January amended into a monthly cycle
+    // lands on 28 or 29 February rather than being rejected outright.
+    if (c.clubType === "Accumulating") {
+        const month = Number(c.yearEndMonth);
+        const day = Number(c.yearEndDay);
+        if (!Number.isInteger(month) || month < 1 || month > 12) {
+            errors.yearEndMonth = "Give the month the club's year ends in, 1 to 12.";
+        }
+        if (!Number.isInteger(day) || day < 1 || day > 31) {
+            errors.yearEndDay = "Give the day of the month the club's year ends on, 1 to 31.";
+        }
+    }
+
     return { valid: Object.keys(errors).length === 0, errors };
 }
 

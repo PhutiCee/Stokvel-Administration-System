@@ -140,6 +140,15 @@ async function updateRole(db, memberId, role) {
     );
 }
 
+/** How many members currently count toward officer capacity (BR-officer-capacity). */
+async function countActiveMembers(db) {
+    const row = await db.one(
+        `SELECT count(*)::int AS n FROM member WHERE club_id = $1 AND standing <> 'Exited'`,
+        [db.clubId]
+    );
+    return row.n;
+}
+
 /** REQ-49: how many members currently hold a given officer role. */
 async function countHoldersOfRole(db, role, excludeMemberId = null) {
     const row = await db.one(
@@ -216,6 +225,7 @@ module.exports = {
     nextQueuePosition,
     updateRole,
     countHoldersOfRole,
+    countActiveMembers,
     updateAccountContact,
     updateNextOfKin,
     currentConstitution,

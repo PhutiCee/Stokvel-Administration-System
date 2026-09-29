@@ -17,27 +17,54 @@
 const MATRIX = {
     Member: [
         "view.dashboard", "view.ownStatement", "view.queue",
-        "view.constitution", "view.pool", "claim.lodge", "assistant.ask"
+        "view.constitution", "view.pool", "claim.lodge", "assistant.ask",
+        "queue.requestSwap", "queue.consentSwap",
+        // REQ-37. A member records and can end cover for their own dependants.
+        "dependant.manage"
     ],
     Treasurer: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.ledger", "view.members", "view.reconciliation",
         "cycle.open", "cycle.close",
         "contribution.capture",
-        "payout.initiate", "payout.cancel",
+        "payout.view", "payout.initiate", "payout.cancel",
         "ledger.reverse", "reconciliation.record",
-        "claim.lodge", "assistant.ask"
+        "claim.lodge", "assistant.ask",
+        "queue.requestSwap", "queue.consentSwap",
+        // REQ-79, REQ-80. The Treasurer initiates a year-end distribution and
+        // records the interest and administrative costs it depends on, the
+        // same way they capture contributions and levy penalties as they
+        // occur.
+        "distribution.view", "distribution.initiate", "distribution.cancel",
+        "distribution.recordFinancials",
+        // REQ-83 to REQ-88, Use Case 4. The Treasurer starts paying a lodged
+        // claim, the same role that initiates any other payout.
+        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage"
     ],
     Secretary: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.members", "view.ledger",
         "member.register", "member.amend", "member.revealId", "member.assignRole",
-        "governance.record", "assistant.ask"
+        "governance.record", "assistant.ask",
+        "payout.view", "queue.requestSwap", "queue.consentSwap",
+        "distribution.view", "claim.view", "dependant.manage"
     ],
     Chairperson: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.ledger", "view.members", "view.reconciliation",
-        "payout.approve", "payout.assess", "penalty.waive",
+        "payout.view", "payout.approve", "payout.assess", "penalty.waive",
+        // REQ-82. The Chairperson approves a year-end distribution the same
+        // way they approve any other payout.
+        "distribution.view", "distribution.approve",
+        // REQ-64, REQ-88. The Chairperson approves a claim's payment the same
+        // way they approve any other payout.
+        "claim.view", "claim.approve", "dependant.manage",
+        // Use Case 3. The Chairperson approves payouts and exchanges of
+        // position, rules on a member in arrears at the head of the queue
+        // (REQ-77) and runs the draw that sets the order (REQ-71). Requesting
+        // and consenting to an exchange belong to every member.
+        "queue.approveSwap", "queue.resolveArrears", "queue.establish",
+        "queue.requestSwap", "queue.consentSwap",
         // REQ-43 names the Secretary AND the Chairperson for all three of
         // these. An earlier version of this matrix gave register and amend to
         // the Secretary alone, which was a defect against the requirement.
