@@ -180,6 +180,11 @@ export const claims = {
   removeDependant: (dependantId) => api.post(`/api/claims/dependants/${dependantId}/remove`)
 };
 
+export const notifications = {
+  list: (opts) => api.get("/api/notifications", opts),
+  send: (details) => api.post("/api/notifications", details)
+};
+
 export const platform = {
   overview: (opts) => api.get("/api/platform", opts),
   createClub: (details) => api.post("/api/platform/clubs", details),

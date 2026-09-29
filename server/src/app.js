@@ -41,6 +41,7 @@ const contributionRoutes = require("./modules/contributions/contributions.routes
 const ledgerRoutes = require("./modules/ledger/ledger.routes");
 const platformRoutes = require("./modules/platform/platform.routes");
 const assistantRoutes = require("./modules/assistant.routes");
+const notificationRoutes = require("./modules/notifications/notifications.routes");
 
 function createApp() {
     const app = express();
@@ -89,6 +90,7 @@ function createApp() {
     app.use("/api/ledger", ledgerRoutes);
     app.use("/api/platform", platformRoutes);
     app.use("/api/assistant", assistantRoutes);
+    app.use("/api/notifications", notificationRoutes);
 
     // 7, 8.
     app.use(notFoundHandler);

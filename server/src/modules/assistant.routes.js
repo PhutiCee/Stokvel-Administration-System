@@ -5,6 +5,7 @@ const { requireClubContext } = require("../middleware/tenancy");
 const { authorize } = require("../middleware/authorize");
 const { asyncRoute } = require("../middleware/errors");
 const { BadRequest } = require("../lib/errors");
+const { askGemini } = require("../lib/gemini");
 
 const router = express.Router();
 router.use(requireClubContext);
@@ -195,6 +196,94 @@ function answerLocally(question, data) {
     return fallbackAnswer();
 }
 
+// ---------------------------------------------------------------------------
+// Gemini. Understands ordinary language, typos and phrasing the regex
+// patterns above cannot. The local matcher above is kept as a fallback: if
+// GEMINI_API_KEY is not configured, or the call fails or times out, the
+// assistant still answers rather than the member seeing an error.
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROMPT = [
+    "You are the assistant built into a stokvel (rotating savings club) administration system.",
+    "Answer the signed-in member's question using ONLY the JSON data given below.",
+    "Never invent figures, dates, names or rules that are not in that data.",
+    "All amounts are South African rand.",
+    "Understand the question even if it has spelling, grammar or punctuation mistakes.",
+    "Keep answers short and specific, formatted in markdown (bold for key figures, a table for lists).",
+    "If the data does not contain what is being asked, say so plainly rather than guessing.",
+    "",
+    "The member's data:"
+].join("\n");
+
+function buildContext({ member, contributions, constitution, clubSummary }) {
+    const context = {
+        member: {
+            fullName: member.full_name,
+            club: member.club_name,
+            clubType: member.club_type,
+            town: member.club_town,
+            role: member.role,
+            joinDate: member.join_date,
+            standing: member.standing,
+            queuePosition: member.queue_position,
+            outstandingAmount: member.outstanding,
+            catchUpAmountOwing: member.catch_up_amount
+        },
+        clubRules: constitution ? {
+            contributionAmount: constitution.contribution_amount,
+            cycleFrequency: constitution.cycle_frequency,
+            gracePeriodDays: constitution.grace_period_days,
+            penaltyAmount: constitution.penalty_amount
+        } : null,
+        recentContributions: contributions.map((c) => ({
+            cycle: c.sequence_number,
+            status: c.status,
+            captured: c.captured_amount,
+            expected: c.expected_amount,
+            dueDate: c.due_date
+        })),
+        currentCycle: clubSummary.cycleSummary ? {
+            cycleNumber: clubSummary.cycleSummary.sequence_number,
+            startDate: clubSummary.cycleSummary.start_date,
+            dueDate: clubSummary.cycleSummary.due_date,
+            paidCount: clubSummary.cycleSummary.paid_count,
+            expectedCount: clubSummary.cycleSummary.expected_count,
+            capturedTotal: clubSummary.cycleSummary.captured_total,
+            expectedTotal: clubSummary.cycleSummary.expected_total
+        } : null,
+        clubPool: {
+            balance: clubSummary.poolSummary.pool_balance,
+            ledgerEntriesRecorded: clubSummary.poolSummary.ledger_entry_count
+        }
+    };
+
+    // Club-wide membership figures are administrative information, officers
+    // only — the same restriction membersAnswer() applies for the local
+    // matcher, kept here so Gemini cannot disclose it to an ordinary member.
+    if (OFFICER_ROLES.includes(member.role)) {
+        context.membership = {
+            totalMembers: clubSummary.memberSummary.member_count,
+            goodStanding: clubSummary.memberSummary.good_standing,
+            inArrears: clubSummary.memberSummary.in_arrears,
+            suspended: clubSummary.memberSummary.suspended
+        };
+    }
+
+    return context;
+}
+
+async function answerQuestion(question, data) {
+    try {
+        return await askGemini({
+            system: SYSTEM_PROMPT + "\n" + JSON.stringify(buildContext(data), null, 2),
+            question
+        });
+    } catch (err) {
+        console.error("[assistant] Gemini call failed, falling back to local answers:", err.message);
+        return answerLocally(question, data);
+    }
+}
+
 router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
     const question = String(req.body?.question || "").trim();
     if (!question) throw new BadRequest("Ask a question first.");
@@ -271,7 +360,7 @@ router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
     ]);
     const clubSummary = { memberSummary, cycleSummary, poolSummary };
 
-    const answer = answerLocally(question, { member, contributions, constitution, clubSummary });
+    const answer = await answerQuestion(question, { member, contributions, constitution, clubSummary });
 
     res.json({ answer });
 }));

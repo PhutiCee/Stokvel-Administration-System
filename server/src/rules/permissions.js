@@ -20,7 +20,8 @@ const MATRIX = {
         "view.constitution", "view.pool", "claim.lodge", "assistant.ask",
         "queue.requestSwap", "queue.consentSwap",
         // REQ-37. A member records and can end cover for their own dependants.
-        "dependant.manage"
+        "dependant.manage",
+        "notification.view"
     ],
     Treasurer: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -39,7 +40,8 @@ const MATRIX = {
         "distribution.recordFinancials",
         // REQ-83 to REQ-88, Use Case 4. The Treasurer starts paying a lodged
         // claim, the same role that initiates any other payout.
-        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage"
+        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage",
+        "notification.view"
     ],
     Secretary: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -47,7 +49,11 @@ const MATRIX = {
         "member.register", "member.amend", "member.revealId", "member.assignRole",
         "governance.record", "assistant.ask",
         "payout.view", "queue.requestSwap", "queue.consentSwap",
-        "distribution.view", "claim.view", "dependant.manage"
+        "distribution.view", "claim.view", "dependant.manage",
+        // The Secretary is the club's record-keeper and the one who circulates
+        // meeting outcomes (governance.record), so a broadcast to every member
+        // is theirs to send. Every role can read what was sent.
+        "notification.view", "notification.send"
     ],
     Chairperson: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -71,7 +77,8 @@ const MATRIX = {
         "member.register", "member.amend", "member.assignRole",
         "member.exitApprove",
         "governance.record", "constitution.propose",
-        "assistant.ask"
+        "assistant.ask",
+        "notification.view"
     ],
 
     // BR-10. The Platform Administrator provisions and suspends clubs and can

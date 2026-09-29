@@ -71,7 +71,12 @@ const env = {
     LOCKOUT_MINUTES: int("LOCKOUT_MINUTES", 15),
 
     // Seed only. Never used outside src/db/seed.js.
-    SEED_PASSWORD: optional("SEED_PASSWORD", "stokvel2026")
+    SEED_PASSWORD: optional("SEED_PASSWORD", "stokvel2026"),
+
+    // Assistant (Use Case 6). Optional: with no key, the assistant falls back
+    // to the local keyword matcher in modules/assistant.routes.js.
+    GEMINI_API_KEY: optional("GEMINI_API_KEY", null),
+    GEMINI_MODEL: optional("GEMINI_MODEL", "gemini-3.5-flash-lite")
 };
 
 module.exports = { env };
