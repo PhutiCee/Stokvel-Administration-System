@@ -11,6 +11,7 @@
     "node": ">=18.17"
   },
   "scripts": {
+    "dev": "node -e \"const { spawn } = require('child_process'); const commands = process.platform === 'win32' ? [['npm.cmd', ['run', 'dev:api']], ['npm.cmd', ['run', 'dev:web']]] : [['npm', ['run', 'dev:api']], ['npm', ['run', 'dev:web']]]; const children = commands.map(([command, args]) => spawn(command, args, { stdio: 'inherit' })); const stop = () => children.forEach((child) => child.kill()); process.on('SIGINT', stop); process.on('SIGTERM', stop);\"",
     "dev:api": "node server/src/index.js",
     "dev:web": "cd web && npx next dev",
     "build": "cd web && npx next build",
