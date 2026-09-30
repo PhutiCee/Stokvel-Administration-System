@@ -3,33 +3,39 @@
 /**
  * Standing rules. REQ-44, REQ-101 to REQ-103.
  *
- * evaluateStanding() decides where a member's standing should move next:
- * Good -> Warning -> Suspended -> Expelled, advancing on constitution
- * thresholds, and back to Good once arrears and penalties are cleared.
+ * Moves a member Good standing -> In arrears (the warning stage) -> Suspended
+ * -> Expelled on constitution thresholds, and back to Good standing once
+ * arrears and penalties are cleared. One step per run, so every stage is
+ * recorded. Expulsion never happens on its own: it waits for a resolution (T5).
  *
- * Expulsion never happens automatically: it waits for a resolution (T5).
- * One step per run, so every stage is recorded rather than skipped.
- *
+ * The values are the labels of the member_standing enum (migration 004).
  * Pure functions. No database.
  */
 
 const STANDING = Object.freeze({
-    GOOD: "good",
-    WARNING: "warning",
-    SUSPENDED: "suspended",
-    EXPELLED: "expelled"
+    GOOD: "Good standing",
+    WARNING: "In arrears",
+    SUSPENDED: "Suspended",
+    EXPELLED: "Expelled",
+    EXITED: "Exited"
 });
 
 const ORDER = [STANDING.GOOD, STANDING.WARNING, STANDING.SUSPENDED, STANDING.EXPELLED];
+
+const STEP_ACTION = Object.freeze({
+    [STANDING.WARNING]: "issue_warning",
+    [STANDING.SUSPENDED]: "suspend",
+    [STANDING.EXPELLED]: "expel"
+});
 
 /**
  * @param {{standing: string, missedContributions: number, arrearsCents: number,
  *          penaltiesOutstandingCents: number, expulsionApproved?: boolean}} member
  * @param {{warningAfterMissed: number, suspensionAfterMissed: number,
  *          expulsionAfterMissed: number}} thresholds
- * @param {Date} now
+ * @param {string} todayIso calendar date, YYYY-MM-DD
  */
-function evaluateStanding(member, thresholds, now = new Date()) {
+function evaluateStanding(member, thresholds, todayIso) {
     const {
         standing,
         missedContributions,
@@ -44,11 +50,12 @@ function evaluateStanding(member, thresholds, now = new Date()) {
         action: null,
         reason,
         needsResolution,
-        changedAt: null
+        changedOn: null
     });
 
-    // Expulsion is only ever reversed by a resolution, never automatically.
+    // Expelled is only ever reversed by a resolution; Exited has left the club.
     if (standing === STANDING.EXPELLED) return unchanged("expelled_by_resolution_only");
+    if (standing === STANDING.EXITED) return unchanged("exited");
 
     // Arrears and penalties cleared: back to Good standing, with the date.
     if (arrearsCents <= 0 && penaltiesOutstandingCents <= 0) {
@@ -59,7 +66,7 @@ function evaluateStanding(member, thresholds, now = new Date()) {
             action: "restore_good_standing",
             reason: "arrears_and_penalties_cleared",
             needsResolution: false,
-            changedAt: now
+            changedOn: todayIso
         };
     }
 
@@ -82,10 +89,10 @@ function evaluateStanding(member, thresholds, now = new Date()) {
     return {
         standing: next,
         changed: true,
-        action: `advance_to_${next}`,
+        action: STEP_ACTION[next],
         reason: "threshold_reached",
         needsResolution: false,
-        changedAt: now
+        changedOn: todayIso
     };
 }
 
