@@ -84,14 +84,14 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-50 | Expected record for every member **in good standing** at cycle commencement | `contributions.service.js` → `openCycle`, `repo.membersForNewCycle` | manual |
 | REQ-51 | Capture amount, receipt date and method | `contributions.service.js` → `captureContribution` | automated (guards); manual (capture) |
 | REQ-52 | An electronic transfer must carry its reference | `rules/contributions.js` → `checkMethod` | automated |
-| REQ-53 | Upload a proof-of-payment file against a captured contribution: JPEG, PNG or PDF, at most 5 MB | `contributions.service.js` -> `uploadProof`, `downloadProof`, `deleteProof`; `POST/GET /api/contributions/:id/proof`; migration 015 (`proof_of_payment`, bytes stored in the database, type and size both checked again by CHECK constraints); `contribution.proof_url` kept in step | integration: an oversized file and a disallowed type are each refused with nothing stored; the exact bytes come back on download; a second upload replaces the first rather than accumulating; `proof_url` is set on upload and cleared on delete |
+| REQ-53 | Upload a proof-of-payment file against a captured contribution: JPEG, PNG or PDF, at most 5 MB | `contributions.service.js` -> `uploadProof`, `downloadProof`, `deleteProof`; `POST/GET /api/contributions/:id/proof`; migration 015 (`proof_of_payment`, bytes stored in the database, type and size both checked again by CHECK constraints); `contribution.proof_url` kept in step | integration: an oversized file and a disallowed type are each refused with nothing stored; the exact bytes come back on download; a second upload replaces the first rather than accumulating; `proof_url` is set on upload and cleared on delete ; T3 screen: `ProofPanel.js`, recent-cycle selector, member-only reads and signature checks; `integration/screens.js` covers actual HTTP uploads/downloads and access refusals |
 | REQ-54 | Status from the named set, recomputed on every capture | `rules/contributions.js` → `resolveStatus`; also recomputed on read | automated: nine boundary cases |
 | REQ-55 | Outstanding until due; Late once due date and grace have both elapsed | `resolveStatus` | automated: grace runs to the end of its last day |
 | REQ-56 | Penalty posted automatically on resolving to Late, once only | `captureContribution` uses the status **before** the payment; migration 009 unique index | database: `penalty_one_per_member_cycle`; manual: paying late in full still incurs it, twice does not |
 | REQ-57 | Excess applied to penalty, then prior arrears oldest first, then credit | `contributions.service.js` → `applyExcess` | manual: R2 000 against a R500 cycle splits across all three tiers, in order |
 | REQ-59 | Refuse capture against a closed cycle | `captureContribution` | manual: `RULE_REFUSAL` naming the reversing-entry route |
 | REQ-60 | Refuse an amount of zero or less | `rules/contributions.js` → `checkCaptureAmount` | automated |
-| REQ-63 | Chairperson may waive a penalty; a reason is required; posted as a reversing entry, never a deletion | `rules/penalties.js` → `assessWaiver`; `contributions.service.js` → `waivePenalty`; migration 014 | automated: `penalties.test.js`; database: a waiver with no reason raises `23514`, and a recorded waiver cannot be reworded or undone (`23001`); integration: the reversing entry exactly undoes the original amount, one reversal per entry, BR-13's double-waiver refused |
+| REQ-63 | Chairperson may waive a penalty; a reason is required; posted as a reversing entry, never a deletion | `rules/penalties.js` → `assessWaiver`; `contributions.service.js` → `waivePenalty`; migration 014 | automated: `penalties.test.js`; database: a waiver with no reason raises `23514`, and a recorded waiver cannot be reworded or undone (`23001`); integration: the reversing entry exactly undoes the original amount, one reversal per entry, BR-13's double-waiver refused ; T3 screen: `Penalties.js`, paged/filterable `GET /api/contributions/penalties`; `integration/screens.js` verifies role, reason, isolation and single reversal |
 
 ## Ledger
 
@@ -122,7 +122,7 @@ built, each authorising and posting through the same `payout` table.
 | REQ-68 | Record the initiator, approver, both timestamps and the rule applied | `payout` table columns; `eligibility_rule_applied`, `assessment_at_initiation`, `assessment_at_approval` | database: `payout_state_shape` and `payout_guard()` (migration 011) make the initiation facts immutable once approved |
 | REQ-69 | Notify the recipient on posting | not built | **not met yet.** Notifications (see Not yet implemented) are a separate service; the payout is complete without it |
 | REQ-70 | Treasurer may cancel an Initiated payout, with a reason | `payouts.service.js` -> `cancelPayout` | automated + integration: cancelling frees the cycle for a later payout; a reason is required; an Approved payout cannot be cancelled |
-| REQ-71 | Ordered payout queue, established by the constitution's method | `rules/queue.js` -> `drawOrder`, `seniorityOrder`, `checkProposedOrder`; `queue.service.js` -> `establishQueue` | automated: `queue.test.js`; integration: all three methods (Random draw, Seniority, Negotiated) against seeded data |
+| REQ-71 | Ordered payout queue, established by the constitution's method | `rules/queue.js` -> `drawOrder`, `seniorityOrder`, `checkProposedOrder`; `queue.service.js` -> `establishQueue` | automated: `queue.test.js`; integration: all three methods (Random draw, Seniority, Negotiated) against seeded data ; T3 screen: `NegotiatedOrder.js`; `integration/screens.js` verifies candidates, malformed/stale order refusal and exact saved order |
 | REQ-72 | Only the member at the head may be initiated | `rules/payouts.js` -> `assessRotationPayout` | automated + integration |
 | REQ-73 | Queue advances on posting; recipient goes to the end | `queue.service.js` -> `advanceAfterPayout`, called inside `approvePayout`'s transaction | integration: the paid member moves to the end, everyone else moves up one, in the same order |
 | REQ-74 | A member may request an exchange with a named other member; recorded pending | `queue.service.js` -> `requestSwap` | automated + integration |
@@ -250,6 +250,7 @@ REQ-100 (export).
 ```bash
 npm test     # 254 automated tests, timezone-independent calendar rules
 npm run test:governance  # isolated PostgreSQL engine, no external database
+node server/integration/screens.js  # T3 workflows, isolated database + HTTP
 npm run check  # every relative import resolves
 ```
 

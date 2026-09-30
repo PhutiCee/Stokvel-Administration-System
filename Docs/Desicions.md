@@ -949,3 +949,50 @@ does not implement or modify the separately assigned reconciliation capture flow
 Validation: 254 unit tests; isolated PostgreSQL migration-upgrade, service and HTTP
 checks; production build; browser checks for proposal, meeting, vote and application.
 The isolated engine does not prove multi-instance concurrency or Supabase networking.
+
+
+## 40. Complete the existing contributions and negotiated queue screens
+
+30 September 2026. Implements remaining-work T3, using the existing permissions,
+shared UI components and module structure. No migration or financial rule change.
+
+Proof evidence (REQ-53) is attached only after a positive contribution has been
+captured. The Treasurer may upload, replace or remove one file. Replacement and
+removal ask for confirmation. JPEG/PNG/PDF, non-empty content and the existing 5 MB
+limit are checked; server checks a matching file signature as well as declared MIME
+(this is not a full document parser or malware scanner). Multipart errors return a
+readable 400. Download responses use private/no-store caching, attachment filenames
+and binary bytes; the authenticated frontend offers local View and Download links.
+
+Proof read access previously accepted any member of the club. It now matches the
+contribution register: Chairperson, Secretary and Treasurer can read the club's
+records; ordinary members can read only their own. The new penalty register uses
+that same visibility rule, with 50 rows per page and stable ordering. Only the
+Chairperson can waive, still using the original waiver service and recorded reason;
+the original penalty and immutable ledger history remain. This adds no general
+ledger reversal operation and no defaulter processing.
+
+The cycle selector uses the existing latest-24-cycle history API, including closed
+cycles, so recent proof is accessible when no cycle is open. Older cycles remain
+available by their existing API identifier; unlimited history browsing is not added.
+
+For Negotiated order, the Chairperson gets the same active candidates used by the
+existing establishment service, including suspended/in-arrears members as that
+service already specifies. Up/Down controls support keyboard and touch. An explicit
+checkbox confirms the club's agreed order; it is a UI acknowledgement, not a new
+voting resolution requirement. The existing server rejects missing, duplicate,
+foreign or stale membership lists. Eligibility for actual payout remains separate.
+Random draw and Seniority retain their existing establishment behaviour.
+
+Isolated authenticated HTTP tests are committed in `server/integration/screens.js`.
+They cover file bytes, replacement/removal, limits, captured-only enforcement,
+role/owner/tenant restrictions, penalty paging/waiver/reversal, and negotiated-order
+validation. Run with `node server/integration/screens.js`; no external database is
+used. Existing governance tests remain separate and unchanged.
+
+A remaining test timestamp in the no-grace boundary fixture now explicitly uses
++02:00. Its previous timezone-free string meant a different instant on hosts east
+of South Africa. Production date and penalty rules are unchanged in this update.
+
+Excluded by assignment: REQ-3, REQ-11, REQ-58, REQ-100, REQ-101–103, notifications,
+and Reconciliation (Use Case 5). No code for those features is introduced here.

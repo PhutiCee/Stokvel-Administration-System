@@ -17,8 +17,16 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  AlertCircle, Search, Check, CalendarPlus, Receipt, X, ArrowRight
+  AlertCircle,
+  Search,
+  Check,
+  CalendarPlus,
+  Receipt,
+  X,
+  ArrowRight,
 } from "lucide-react";
+import ProofPanel from "@/components/contributions/ProofPanel";
+import Penalties from "@/components/contributions/Penalties";
 import { PageHeader } from "@/components/shell/ClubShell";
 import Button from "@/components/ui/Button";
 import { Input, Select, Field } from "@/components/ui/Input";
@@ -33,7 +41,7 @@ const STATUS_TONE = {
   Paid: "positive",
   Partial: "attention",
   Outstanding: "neutral",
-  Late: "exception"
+  Late: "exception",
 };
 
 /** Outstanding work first, then by name. */
@@ -47,20 +55,37 @@ export default function ContributionsPage() {
   const [selected, setSelected] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [opening, setOpening] = useState(false);
+  const [proofFor, setProofFor] = useState(null);
+  const [cycleList, setCycleList] = useState([]);
+  const [cycleId, setCycleId] = useState("");
 
-  const load = useCallback(async (signal) => {
-    try {
-      const d = await cyclesApi.current({ signal });
-      setData(d);
-      setError(null);
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      setError(err instanceof ApiError ? err.message : "Could not load the cycle.");
-    }
-  }, []);
+  const load = useCallback(
+    async (signal) => {
+      try {
+        const [d, history] = await Promise.all([
+          cycleId ? cyclesApi.get(cycleId) : cyclesApi.current({ signal }),
+          cyclesApi.list(),
+        ]);
+        if (signal?.aborted) return;
+        setCycleList(history.cycles);
+        setData(d);
+        setError(null);
+      } catch (err) {
+        if (signal?.aborted || err.name === "AbortError") return;
+        setError(
+          err instanceof ApiError ? err.message : "Could not load the cycle.",
+        );
+      }
+    },
+    [cycleId],
+  );
 
   useEffect(() => {
     const c = new AbortController();
+    setData(null);
+    setSelected(null);
+    setProofFor(null);
+    setReceipt(null);
     load(c.signal);
     return () => c.abort();
   }, [load]);
@@ -69,8 +94,17 @@ export default function ContributionsPage() {
     if (!data?.contributions) return [];
     const q = query.trim().toLowerCase();
     return data.contributions
-      .filter((c) => !q || c.fullName.toLowerCase().includes(q) || (c.phone || "").includes(q))
-      .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || a.fullName.localeCompare(b.fullName));
+      .filter(
+        (c) =>
+          !q ||
+          c.fullName.toLowerCase().includes(q) ||
+          (c.phone || "").includes(q),
+      )
+      .sort(
+        (a, b) =>
+          ORDER[a.status] - ORDER[b.status] ||
+          a.fullName.localeCompare(b.fullName),
+      );
   }, [data, query]);
 
   const totals = useMemo(() => {
@@ -94,15 +128,41 @@ export default function ContributionsPage() {
   }
 
   if (error && !data) {
-    return <Alert tone="exception" icon={AlertCircle} title="Could not load contributions">{error}</Alert>;
+    return (
+      <Alert
+        tone="exception"
+        icon={AlertCircle}
+        title="Could not load contributions"
+      >
+        {error}
+      </Alert>
+    );
   }
   if (!data) return <Loading label="Loading the cycle" />;
+
+  const cycleSelector = (
+    <Field label="Contribution cycle" htmlFor="contribution-cycle">
+      <Select
+        id="contribution-cycle"
+        value={cycleId}
+        onChange={(e) => setCycleId(e.target.value)}
+      >
+        <option value="">Current open cycle</option>
+        {cycleList.map((c) => (
+          <option key={c.cycleId} value={c.cycleId}>
+            Cycle {c.sequenceNumber} · {c.status}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
 
   // --- no open cycle -------------------------------------------------------
   if (!data.cycle) {
     return (
       <>
         <PageHeader title="Contributions" />
+        <div className="mb-4">{cycleSelector}</div>
         <Card>
           <Empty
             icon={CalendarPlus}
@@ -115,12 +175,17 @@ export default function ContributionsPage() {
               )
             }
           >
-            Opening a cycle bills every member in good standing the amount in the club&rsquo;s
-            constitution. Anyone in arrears is left out, and any credit from an overpayment is
-            applied automatically.
+            Opening a cycle bills every member in good standing the amount in
+            the club&rsquo;s constitution. Anyone in arrears is left out, and
+            any credit from an overpayment is applied automatically.
           </Empty>
         </Card>
-        {error && <Alert tone="exception" icon={AlertCircle} className="mt-4">{error}</Alert>}
+        {error && (
+          <Alert tone="exception" icon={AlertCircle} className="mt-4">
+            {error}
+          </Alert>
+        )}
+        <Penalties canWaive={can("penalty.waive")} />
       </>
     );
   }
@@ -137,12 +202,23 @@ export default function ContributionsPage() {
             ? `Late from ${fmtDate(cycle.lateFrom)}, after ${cycle.gracePeriodDays} days of grace, when a ${money(cycle.penaltyAmount)} penalty is posted.`
             : `No grace period — a ${money(cycle.penaltyAmount)} penalty is posted the day after.`)
         }
-        action={<Badge tone={cycle.status === "Open" ? "accent" : "neutral"}>{cycle.status}</Badge>}
+        action={
+          <Badge tone={cycle.status === "Open" ? "accent" : "neutral"}>
+            {cycle.status}
+          </Badge>
+        }
       />
 
-      {error && <Alert tone="exception" icon={AlertCircle} className="mb-5">{error}</Alert>}
+      {error && (
+        <Alert tone="exception" icon={AlertCircle} className="mb-5">
+          {error}
+        </Alert>
+      )}
 
-      {receipt && <CaptureReceipt receipt={receipt} onDismiss={() => setReceipt(null)} />}
+      <div className="mb-4">{cycleSelector}</div>
+      {receipt && (
+        <CaptureReceipt receipt={receipt} onDismiss={() => setReceipt(null)} />
+      )}
 
       {totals && totals.n > 1 && (
         <p className="text-[13px] text-ink-500 mb-4">
@@ -151,7 +227,12 @@ export default function ContributionsPage() {
         </p>
       )}
 
-      <div className={cx("grid gap-5", selected ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "")}>
+      <div
+        className={cx(
+          "grid gap-5",
+          selected ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "",
+        )}
+      >
         <div>
           {data.contributions.length > 3 && (
             <div className="relative mb-3">
@@ -184,8 +265,10 @@ export default function ContributionsPage() {
                   <li key={c.contributionId}>
                     <div
                       className={cx(
-                        "bg-surface border rounded-lg shadow-card px-4 py-3 flex items-center gap-3 transition-colors",
-                        active ? "border-accent-600 ring-1 ring-accent-600" : "border-line"
+                        "bg-surface border rounded-lg shadow-card px-4 py-3 flex flex-wrap items-center gap-3 transition-colors",
+                        active
+                          ? "border-accent-600 ring-1 ring-accent-600"
+                          : "border-line",
                       )}
                     >
                       <span
@@ -196,7 +279,9 @@ export default function ContributionsPage() {
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <p className="text-[14px] font-medium text-ink-900 truncate">{c.fullName}</p>
+                        <p className="text-[14px] font-medium text-ink-900 truncate">
+                          {c.fullName}
+                        </p>
                         <p className="text-[12.5px] text-ink-500 font-mono tnum">
                           {money(c.captured)} of {money(c.expected)}
                           {c.method ? ` · ${c.method}` : ""}
@@ -205,18 +290,30 @@ export default function ContributionsPage() {
 
                       <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
 
-                      {can("contribution.capture") && cycle.status === "Open" && (
-                        <Button
-                          size="sm"
-                          variant={short ? "primary" : "secondary"}
-                          onClick={() => {
-                            setSelected(c);
-                            setReceipt(null);
-                          }}
-                        >
-                          {short ? "Capture" : "Add"}
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setProofFor(c);
+                          setSelected(null);
+                        }}
+                      >
+                        Proof
+                      </Button>
+                      {can("contribution.capture") &&
+                        cycle.status === "Open" && (
+                          <Button
+                            size="sm"
+                            variant={short ? "primary" : "secondary"}
+                            onClick={() => {
+                              setProofFor(null);
+                              setSelected(c);
+                              setReceipt(null);
+                            }}
+                          >
+                            {short ? "Capture" : "Add"}
+                          </Button>
+                        )}
                     </div>
                   </li>
                 );
@@ -238,6 +335,15 @@ export default function ContributionsPage() {
           />
         )}
       </div>
+      {proofFor && (
+        <ProofPanel
+          key={proofFor.contributionId}
+          contribution={proofFor}
+          canUpload={can("contribution.capture")}
+          onClose={() => setProofFor(null)}
+        />
+      )}
+      <Penalties canWaive={can("penalty.waive")} refreshKey={receipt} />
     </>
   );
 }
@@ -247,13 +353,19 @@ export default function ContributionsPage() {
 function CapturePanel({ contribution, onCancel, onCaptured }) {
   const shortfall = Math.max(
     0,
-    Math.round((Number(contribution.expected) - Number(contribution.captured)) * 100) / 100
+    Math.round(
+      (Number(contribution.expected) - Number(contribution.captured)) * 100,
+    ) / 100,
   );
 
-  const [amount, setAmount] = useState(shortfall > 0 ? String(shortfall.toFixed(2)) : "");
+  const [amount, setAmount] = useState(
+    shortfall > 0 ? String(shortfall.toFixed(2)) : "",
+  );
   const [method, setMethod] = useState("Cash");
   const [reference, setReference] = useState("");
-  const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
+  const [receiptDate, setReceiptDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
   const [fields, setFields] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -266,11 +378,15 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
     setFields({});
     try {
       const result = await api.capture(contribution.contributionId, {
-        amount, method, reference: reference || null, receiptDate
+        amount,
+        method,
+        reference: reference || null,
+        receiptDate,
       });
       onCaptured(result);
     } catch (err) {
-      if (err instanceof ApiError && err.detail?.fields) setFields(err.detail.fields);
+      if (err instanceof ApiError && err.detail?.fields)
+        setFields(err.detail.fields);
       else setError(err.message);
       setBusy(false);
     }
@@ -280,7 +396,9 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
     <Card className="p-5 h-fit lg:sticky lg:top-5">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-ink-900 truncate">{contribution.fullName}</h2>
+          <h2 className="text-sm font-semibold text-ink-900 truncate">
+            {contribution.fullName}
+          </h2>
           <p className="text-[12.5px] text-ink-500 font-mono tnum">
             Owes {money(shortfall)} of {money(contribution.expected)}
           </p>
@@ -295,7 +413,12 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
       </div>
 
       <div className="space-y-4">
-        <Field label="Amount received" htmlFor="amount" required error={fields.amount}>
+        <Field
+          label="Amount received"
+          htmlFor="amount"
+          required
+          error={fields.amount}
+        >
           <Input
             id="amount"
             inputMode="decimal"
@@ -312,9 +435,9 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
 
         {overpaying && (
           <Alert tone="attention" title="More than is owed">
-            The extra {money(Number(amount) - shortfall)} will go first to any unpaid penalty, then
-            to older arrears oldest first, and whatever is left becomes a credit against the next
-            cycle.
+            The extra {money(Number(amount) - shortfall)} will go first to any
+            unpaid penalty, then to older arrears oldest first, and whatever is
+            left becomes a credit against the next cycle.
           </Alert>
         )}
 
@@ -328,7 +451,9 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
             }}
           >
             {METHODS.map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m}>
+                {m}
+              </option>
             ))}
           </Select>
         </Field>
@@ -363,7 +488,11 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
           />
         </Field>
 
-        {error && <Alert tone="exception" icon={AlertCircle}>{error}</Alert>}
+        {error && (
+          <Alert tone="exception" icon={AlertCircle}>
+            {error}
+          </Alert>
+        )}
 
         <div className="flex gap-2 pt-1">
           <Button onClick={submit} loading={busy} className="flex-1">
@@ -400,15 +529,22 @@ function CaptureReceipt({ receipt, onDismiss }) {
               {money(receipt.amountReceived)} captured from {receipt.memberName}
             </p>
             <p className="text-[13px] text-ink-700 mt-0.5">
-              This cycle is now <strong className="font-medium">{receipt.status}</strong> at{" "}
-              <span className="font-mono tnum">{money(receipt.captured)}</span> of{" "}
-              <span className="font-mono tnum">{money(receipt.expected)}</span>. Pool balance{" "}
-              <span className="font-mono tnum">{money(receipt.ledger.resultingBalance)}</span>.
+              This cycle is now{" "}
+              <strong className="font-medium">{receipt.status}</strong> at{" "}
+              <span className="font-mono tnum">{money(receipt.captured)}</span>{" "}
+              of{" "}
+              <span className="font-mono tnum">{money(receipt.expected)}</span>.
+              Pool balance{" "}
+              <span className="font-mono tnum">
+                {money(receipt.ledger.resultingBalance)}
+              </span>
+              .
             </p>
 
             {receipt.penaltyLevied && (
               <p className="text-[13px] text-exc-700 mt-2">
-                A late penalty of {money(receipt.penaltyLevied)} was posted automatically.
+                A late penalty of {money(receipt.penaltyLevied)} was posted
+                automatically.
               </p>
             )}
 
@@ -419,8 +555,15 @@ function CaptureReceipt({ receipt, onDismiss }) {
                 </p>
                 <ul className="mt-1.5 space-y-1">
                   {receipt.allocations.map((a, i) => (
-                    <li key={i} className="flex items-baseline gap-2 text-[13px] text-ink-700">
-                      <ArrowRight size={12} className="shrink-0 text-ink-400 mt-1" aria-hidden />
+                    <li
+                      key={i}
+                      className="flex items-baseline gap-2 text-[13px] text-ink-700"
+                    >
+                      <ArrowRight
+                        size={12}
+                        className="shrink-0 text-ink-400 mt-1"
+                        aria-hidden
+                      />
                       <span className="font-mono tnum">{money(a.amount)}</span>
                       <span className="text-ink-500">{a.description}</span>
                     </li>

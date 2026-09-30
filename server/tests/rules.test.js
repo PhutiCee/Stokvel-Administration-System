@@ -169,7 +169,7 @@ test("contribution status — REQ-54, REQ-55", async (t) => {
 
     await t.test("no grace period means late the day after", () => {
         assert.equal(resolveStatus({
-            expected: "500.00", captured: "0", dueDate: due, graceDays: 0, asAt: at("2026-09-08T01:00:00")
+            expected: "500.00", captured: "0", dueDate: due, graceDays: 0, asAt: at("2026-09-08T01:00:00+02:00")
         }), "Late");
     });
 

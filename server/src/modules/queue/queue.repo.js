@@ -40,10 +40,11 @@ async function listQueueRows(db) {
 /** Members of a rotating club who are not yet in the queue, for a draw. */
 async function listDrawCandidates(db) {
     return db.many(
-        `SELECT m.member_id, m.standing,
+        `SELECT m.member_id, m.standing, u.full_name,
                 m.join_date::text AS join_date,
                 m.created_at      AS registered_at
            FROM member m
+           JOIN user_account u ON u.user_id=m.user_id
           WHERE m.club_id = $1
             AND m.standing NOT IN ('Exited', 'Expelled')
           ORDER BY m.created_at ASC`,

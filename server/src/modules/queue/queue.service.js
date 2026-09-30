@@ -156,6 +156,8 @@ async function getQueue(db, { viewer }) {
         head: entries[0] ? { memberId: entries[0].memberId, fullName: entries[0].fullName, standing: entries[0].standing } : null,
         needsRuling: await rulingNeeded(db, headRow),
         entries,
+        candidates: viewer.role === "Chairperson" && !entries.length
+            ? (await repo.listDrawCandidates(db)).map(m => ({memberId:m.member_id,fullName:m.full_name,standing:m.standing})) : [],
         openSwaps: visible.map(presentSwap)
     };
 }

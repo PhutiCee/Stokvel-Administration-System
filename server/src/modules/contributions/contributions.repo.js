@@ -16,31 +16,39 @@ const { forClub } = require("../../db/pool");
 async function constitutionInForceOn(db, date = null) {
     return date
         ? db.one(
-            `SELECT * FROM constitution
+              `SELECT * FROM constitution
               WHERE club_id = $1 AND effective_date <= $2
               ORDER BY effective_date DESC, version DESC LIMIT 1`,
-            [db.clubId, date]
-        )
+              [db.clubId, date]
+          )
         : db.one(
-            `SELECT * FROM constitution
+              `SELECT * FROM constitution
               WHERE club_id = $1 AND effective_date <= CURRENT_DATE
               ORDER BY effective_date DESC, version DESC LIMIT 1`,
-            [db.clubId]
-        );
+              [db.clubId]
+          );
 }
 
 // REQ-33: amendments govern cycles commencing strictly AFTER their effective date.
-async function constitutionForStart(db,date) {
-    return db.one(`SELECT * FROM constitution WHERE club_id=$1
+async function constitutionForStart(db, date) {
+    return db.one(
+        `SELECT * FROM constitution WHERE club_id=$1
         AND (effective_date<$2::date OR (version=1 AND effective_date<=$2::date))
-        ORDER BY version DESC LIMIT 1`,[db.clubId,date]);
+        ORDER BY version DESC LIMIT 1`,
+        [db.clubId, date]
+    );
 }
-async function constitutionForCycle(db,cycleId) {
-    return db.one(`SELECT k.* FROM constitution k JOIN cycle c
+async function constitutionForCycle(db, cycleId) {
+    return db.one(
+        `SELECT k.* FROM constitution k JOIN cycle c
         ON c.club_id=k.club_id AND c.constitution_id=k.constitution_id
-        WHERE c.club_id=$1 AND c.cycle_id=$2`,[db.clubId,cycleId]);
+        WHERE c.club_id=$1 AND c.cycle_id=$2`,
+        [db.clubId, cycleId]
+    );
 }
-async function lockClub(db) {return db.one('SELECT club_id FROM club WHERE club_id=$1 FOR UPDATE',[db.clubId]);}
+async function lockClub(db) {
+    return db.one("SELECT club_id FROM club WHERE club_id=$1 FOR UPDATE", [db.clubId]);
+}
 
 // --- cycles ----------------------------------------------------------------
 
@@ -147,7 +155,11 @@ async function getContribution(db, contributionId) {
     );
 }
 
-async function applyCapture(tx, contributionId, { capturedAmount, status, receiptDate, method, reference, capturedBy }) {
+async function applyCapture(
+    tx,
+    contributionId,
+    { capturedAmount, status, receiptDate, method, reference, capturedBy }
+) {
     return tx.one(
         `UPDATE contribution
             SET captured_amount = $3,
@@ -160,7 +172,16 @@ async function applyCapture(tx, contributionId, { capturedAmount, status, receip
                 updated_at      = now()
           WHERE club_id = $1 AND contribution_id = $2
           RETURNING *`,
-        [tx.clubId, contributionId, capturedAmount, status, receiptDate, method, reference, capturedBy]
+        [
+            tx.clubId,
+            contributionId,
+            capturedAmount,
+            status,
+            receiptDate,
+            method,
+            reference,
+            capturedBy
+        ]
     );
 }
 
@@ -215,6 +236,25 @@ async function settlePenalty(tx, penaltyId, settledAmount) {
 
 // --- waiver (REQ-63, BR-13) -------------------------------------------------
 
+// Paged register; an ordinary member is always restricted to their own rows.
+async function listPenalties(db, { memberId, status, offset, limit }) {
+    return db.many(
+        `SELECT p.*, u.full_name, c.sequence_number,
+        w.full_name AS waived_by_name
+        FROM penalty p
+        JOIN member m ON m.club_id=p.club_id AND m.member_id=p.member_id
+        JOIN user_account u ON u.user_id=m.user_id
+        LEFT JOIN cycle c ON c.club_id=p.club_id AND c.cycle_id=p.cycle_id
+        LEFT JOIN user_account w ON w.user_id=p.waived_by
+        WHERE p.club_id=$1 AND ($2::uuid IS NULL OR p.member_id=$2)
+          AND ($3='all' OR ($3='waived' AND p.waived_at IS NOT NULL)
+            OR ($3='outstanding' AND p.waived_at IS NULL AND p.settled_amount<p.amount)
+            OR ($3='settled' AND p.waived_at IS NULL AND p.settled_amount>=p.amount))
+        ORDER BY p.levied_at DESC, p.penalty_id DESC LIMIT $4 OFFSET $5`,
+        [db.clubId, memberId, status, limit, offset]
+    );
+}
+
 async function getPenalty(db, penaltyId) {
     return db.one(
         `SELECT p.*, u.full_name, c.sequence_number
@@ -258,7 +298,11 @@ async function markWaived(db, penaltyId, { waivedBy, reason }) {
  * kept in step anyway, pointing at this API's own download route, so the
  * column still means what its comment says: where to fetch the file from.
  */
-async function upsertProof(tx, contributionId, { fileData, mimeType, originalFilename, fileSize, uploadedBy }) {
+async function upsertProof(
+    tx,
+    contributionId,
+    { fileData, mimeType, originalFilename, fileSize, uploadedBy }
+) {
     const saved = await tx.one(
         `INSERT INTO proof_of_payment
              (club_id, contribution_id, file_data, mime_type, original_filename, file_size, uploaded_by)
@@ -297,8 +341,14 @@ async function getProofFile(db, contributionId) {
 
 /** Called by the service inside its own transaction. */
 async function deleteProof(tx, contributionId) {
-    await tx.query(`DELETE FROM proof_of_payment WHERE club_id = $1 AND contribution_id = $2`, [tx.clubId, contributionId]);
-    await tx.query(`UPDATE contribution SET proof_url = NULL WHERE club_id = $1 AND contribution_id = $2`, [tx.clubId, contributionId]);
+    await tx.query(`DELETE FROM proof_of_payment WHERE club_id = $1 AND contribution_id = $2`, [
+        tx.clubId,
+        contributionId
+    ]);
+    await tx.query(
+        `UPDATE contribution SET proof_url = NULL WHERE club_id = $1 AND contribution_id = $2`,
+        [tx.clubId, contributionId]
+    );
 }
 
 /**
@@ -340,11 +390,33 @@ async function getMemberCredit(tx, memberId) {
 
 module.exports = {
     forClub,
-    constitutionInForceOn, constitutionForStart, constitutionForCycle, lockClub,
-    openCycleFor, getCycle, nextSequenceNumber, createCycle, membersForNewCycle, listCycles,
-    insertExpected, listForCycle, getContribution, applyCapture, setStatus, priorOutstanding,
-    unsettledPenalties, settlePenalty, levyPenalty,
-    getPenalty, getPenaltyLedgerEntry, markWaived,
-    upsertProof, getProofMeta, getProofFile, deleteProof,
-    addCredit, getMemberCredit
+    constitutionInForceOn,
+    constitutionForStart,
+    constitutionForCycle,
+    lockClub,
+    openCycleFor,
+    getCycle,
+    nextSequenceNumber,
+    createCycle,
+    membersForNewCycle,
+    listCycles,
+    insertExpected,
+    listForCycle,
+    getContribution,
+    applyCapture,
+    setStatus,
+    priorOutstanding,
+    unsettledPenalties,
+    settlePenalty,
+    levyPenalty,
+    listPenalties,
+    getPenalty,
+    getPenaltyLedgerEntry,
+    markWaived,
+    upsertProof,
+    getProofMeta,
+    getProofFile,
+    deleteProof,
+    addCredit,
+    getMemberCredit
 };

@@ -72,15 +72,17 @@ Pre-existing cycles keep their former due-date selection; no historic money is
 rewritten. Decisions 38 and the integration checks record this migration boundary.
 Documentation numbering cleanup unrelated to governance remains separate work.
 
-**T3. Screens for backends that already exist.** (M)
-- Upload, view and remove proof of payment on the contributions page
-  (`POST/GET /api/contributions/:id/proof`, REQ-53).
-- Waive a penalty (Chairperson): the endpoint exists
-  (`POST /api/contributions/penalties/:id/waive`) but there is no list of penalties
-  anywhere, so add `GET` for penalties and a small page or section.
-- Negotiated queue order: the "Establish the order" button fails for clubs whose
-  method is Negotiated because there is no screen to choose the order
-  (`POST /api/queue/establish` takes `{ order: [memberIds] }`).
+**T3. Screens for backends that already exist — completed.**
+- Contributions: Treasurer uploads/replaces/removes JPEG, PNG or PDF proof against
+  captured contributions; authorised readers can view/download it. The cycle selector
+  exposes the current cycle and the latest 24 cycles from the existing history API.
+- Contributions: paged penalty register with all/outstanding/settled/waived filters;
+  Chairperson waiver requires a reason and uses the existing reversing-entry service.
+  Members see only their own penalties and proof; officers see the club register.
+- Queue: Chairperson arranges every active candidate using Up/Down controls for the
+  Negotiated method and confirms the agreed order. The server revalidates membership
+  before saving. Random draw and Seniority retain their existing flows.
+- Evidence: `node server/integration/screens.js`; decision 40. No new migration.
 
 ## 4. Priority 1 - requirements not yet built
 
@@ -230,7 +232,7 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 
 ## 7. Suggested order if time is short
 
-1. T3 and the remaining documentation numbering cleanup (T2 date/cycle fixes are done).
+1. Remaining documentation numbering cleanup (T2 date/cycle fixes and T3 screens are done).
 2. T4 Reconciliation remains. T5 Governance is implemented; apply migrations 016 and 017
    and run the governance demo checks.
 3. T7 Standing engine, then T8 Exit processing.

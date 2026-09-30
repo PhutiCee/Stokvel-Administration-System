@@ -17,13 +17,23 @@ const ledger = require("../ledger/ledger.service");
 const { withClubTransaction } = require("../../db/tx");
 const { toCents, toNumeric, format } = require("../../lib/money");
 const {
-    resolveStatus, lateFrom, penaltyIsDue, checkCaptureAmount, checkMethod
+    resolveStatus,
+    lateFrom,
+    penaltyIsDue,
+    checkCaptureAmount,
+    checkMethod
 } = require("../../rules/contributions");
 const { assessWaiver } = require("../../rules/penalties");
 const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
 
-const { assertIsoDate, todayIso, addDays } = require('../../lib/dates');
-function inputDate(value,label) {try{return assertIsoDate(value,label);}catch(err){throw new BadRequest(err.message);}}
+const { assertIsoDate, todayIso, addDays } = require("../../lib/dates");
+function inputDate(value, label) {
+    try {
+        return assertIsoDate(value, label);
+    } catch (err) {
+        throw new BadRequest(err.message);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // openCycle() + generateExpectedContributions()
@@ -41,29 +51,35 @@ function inputDate(value,label) {try{return assertIsoDate(value,label);}catch(er
  * database can settle it.
  */
 async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
-    const start = startDate ? inputDate(startDate,'Cycle start') : todayIso();
-    if (start > todayIso()) throw new RuleRefusal('A cycle cannot be opened before its commencement date.');
-    const due = dueDate ? inputDate(dueDate,'Due date') : addDays(start,7);
-    if (due < start) throw new BadRequest('The due date cannot fall before the cycle starts.');
+    const start = startDate ? inputDate(startDate, "Cycle start") : todayIso();
+    if (start > todayIso())
+        throw new RuleRefusal("A cycle cannot be opened before its commencement date.");
+    const due = dueDate ? inputDate(dueDate, "Due date") : addDays(start, 7);
+    if (due < start) throw new BadRequest("The due date cannot fall before the cycle starts.");
     const result = await withClubTransaction(db.clubId, async (tx) => {
         await repo.lockClub(tx);
-        const constitution = await repo.constitutionForStart(tx,start);
-        if (!constitution) throw new RuleRefusal('No constitution applies to this cycle commencement date.');
+        const constitution = await repo.constitutionForStart(tx, start);
+        if (!constitution)
+            throw new RuleRefusal("No constitution applies to this cycle commencement date.");
         const existing = await repo.openCycleFor(tx);
-        if (existing) throw new Conflict(`Cycle ${existing.sequence_number} is still open. Close it first.`);
-    const members = await repo.membersForNewCycle(tx);
-    if (members.length === 0) {
-        throw new RuleRefusal(
-            "No member of this club is in good standing, so there is nobody to bill. " +
-            "Register members or restore standing first."
-        );
-    }
+        if (existing)
+            throw new Conflict(`Cycle ${existing.sequence_number} is still open. Close it first.`);
+        const members = await repo.membersForNewCycle(tx);
+        if (members.length === 0) {
+            throw new RuleRefusal(
+                "No member of this club is in good standing, so there is nobody to bill. " +
+                    "Register members or restore standing first."
+            );
+        }
 
-    const contributionCents = toCents(constitution.contribution_amount);
-    const sequenceNumber = await repo.nextSequenceNumber(tx);
+        const contributionCents = toCents(constitution.contribution_amount);
+        const sequenceNumber = await repo.nextSequenceNumber(tx);
 
         const cycle = await repo.createCycle(tx, {
-            sequenceNumber, startDate: start, dueDate: due, openedBy: actor.userId
+            sequenceNumber,
+            startDate: start,
+            dueDate: due,
+            openedBy: actor.userId
         });
 
         let billedCents = 0;
@@ -103,7 +119,13 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
             billedCents += expectedCents;
         }
 
-        return { cycle, billedCents, creditsApplied, sequenceNumber, memberCount:members.length };
+        return {
+            cycle,
+            billedCents,
+            creditsApplied,
+            sequenceNumber,
+            memberCount: members.length
+        };
     });
 
     await audit("cycle.open", "Success", {
@@ -117,7 +139,7 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
 
     return {
         cycleId: result.cycle.cycle_id,
-        sequenceNumber:result.sequenceNumber,
+        sequenceNumber: result.sequenceNumber,
         startDate: start,
         dueDate: due,
         memberCount: result.memberCount,
@@ -160,7 +182,11 @@ async function applyExcess(tx, { memberId, excessCents, excludeContributionId })
             if (owingCents <= 0) continue;
 
             const payCents = Math.min(remaining, owingCents);
-            await repo.settlePenalty(tx, p.penalty_id, toNumeric(toCents(p.settled_amount) + payCents));
+            await repo.settlePenalty(
+                tx,
+                p.penalty_id,
+                toNumeric(toCents(p.settled_amount) + payCents)
+            );
             remaining -= payCents;
 
             allocations.push({
@@ -236,11 +262,14 @@ async function applyExcess(tx, { memberId, excessCents, excludeContributionId })
 
 async function captureContribution(db, contributionId, input, { actor, audit }) {
     // --- refusals, before anything is written ---
-    const amountError = checkCaptureAmount(input.amount);        // REQ-60
+    const amountError = checkCaptureAmount(input.amount); // REQ-60
     if (amountError) throw new BadRequest(amountError, { fields: { amount: amountError } });
 
     const methodError = checkMethod(input.method, input.reference); // REQ-52
-    if (methodError) throw new BadRequest("Some details need correcting.", { fields: methodError });
+    if (methodError)
+        throw new BadRequest("Some details need correcting.", {
+            fields: methodError
+        });
 
     const existing = await repo.getContribution(db, contributionId);
     if (!existing) throw new NotFound("That contribution was not found in this club.");
@@ -249,7 +278,7 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
     if (existing.cycle_status === "Closed") {
         throw new RuleRefusal(
             `Cycle ${existing.sequence_number} is closed. A correction to a closed cycle needs a ` +
-            `reversing entry followed by a fresh capture, so that the original record survives.`,
+                `reversing entry followed by a fresh capture, so that the original record survives.`,
             { requirement: "REQ-59" }
         );
     }
@@ -267,7 +296,9 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
     const appliedCents = Math.min(amountCents, shortfallCents);
     const excessCents = amountCents - appliedCents;
 
-    const receiptDate = input.receiptDate ? inputDate(input.receiptDate,'Receipt date') : todayIso();
+    const receiptDate = input.receiptDate
+        ? inputDate(input.receiptDate, "Receipt date")
+        : todayIso();
 
     // REQ-56 attaches the penalty to HAVING BEEN late, so it is decided from the
     // member's position BEFORE this payment, not after it.
@@ -403,9 +434,7 @@ async function listCycles(db) {
 }
 
 async function getCycleDetail(db, cycleId) {
-    const cycle = cycleId
-        ? await repo.getCycle(db, cycleId)
-        : await repo.openCycleFor(db);
+    const cycle = cycleId ? await repo.getCycle(db, cycleId) : await repo.openCycleFor(db);
 
     if (!cycle) return null;
 
@@ -464,14 +493,63 @@ async function getCycleDetail(db, cycleId) {
  * original penalty"), and the penalty row is marked waived, with the reason,
  * once, permanently (the database enforces this even bypassing the service).
  */
+const OFFICERS = ["Treasurer", "Secretary", "Chairperson"];
+async function listPenalties(db, query, { actor }) {
+    const status = query.status || "all";
+    const offset = Number(query.offset || 0);
+    if (
+        !["all", "outstanding", "settled", "waived"].includes(status) ||
+        !Number.isSafeInteger(offset) ||
+        offset < 0
+    )
+        throw new BadRequest("Choose a valid penalty filter and page.");
+    const rows = await repo.listPenalties(db, {
+        memberId: OFFICERS.includes(actor.role) ? null : actor.memberId,
+        status,
+        offset,
+        limit: 51
+    });
+    return {
+        hasMore: rows.length > 50,
+        penalties: rows.slice(0, 50).map((p) => ({
+            penaltyId: p.penalty_id,
+            fullName: p.full_name,
+            memberId: p.member_id,
+            cycleNumber: p.sequence_number,
+            amount: p.amount,
+            settledAmount: p.settled_amount,
+            outstandingAmount: p.waived_at
+                ? "0.00"
+                : toNumeric(toCents(p.amount) - toCents(p.settled_amount)),
+            reason: p.reason,
+            leviedAt: p.levied_at,
+            status: p.waived_at
+                ? "Waived"
+                : toCents(p.settled_amount) >= toCents(p.amount)
+                  ? "Settled"
+                  : "Outstanding",
+            waivedAt: p.waived_at,
+            waivedBy: p.waived_by_name,
+            waiverReason: p.waiver_reason
+        }))
+    };
+}
+
 async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
     const outcome = await withClubTransaction(db.clubId, async (tx, client) => {
         const penalty = await repo.getPenalty(tx, penaltyId);
         if (!penalty) return { notFound: true };
 
-        const assessment = assessWaiver({ alreadyWaived: !!penalty.waived_at, reason });
+        const assessment = assessWaiver({
+            alreadyWaived: !!penalty.waived_at,
+            reason
+        });
         if (!assessment.eligible) {
-            return { refused: assessment.refusals.map((r) => r.message).join(" "), detail: { refusals: assessment.refusals }, penalty };
+            return {
+                refused: assessment.refusals.map((r) => r.message).join(" "),
+                detail: { refusals: assessment.refusals },
+                penalty
+            };
         }
 
         const original = await repo.getPenaltyLedgerEntry(tx, penaltyId);
@@ -480,7 +558,11 @@ async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
             // comment in captureContribution). Nothing in this codebase can
             // reach this branch, but a silent no-op would be worse than a
             // clear error if it ever did.
-            return { refused: "No ledger entry was found for this penalty. It cannot be waived without one to reverse.", detail: {} };
+            return {
+                refused:
+                    "No ledger entry was found for this penalty. It cannot be waived without one to reverse.",
+                detail: {}
+            };
         }
 
         const entry = await ledger.appendEntry(client, {
@@ -495,7 +577,10 @@ async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
             postedBy: actor.userId
         });
 
-        await repo.markWaived(tx, penaltyId, { waivedBy: actor.userId, reason: String(reason).trim() });
+        await repo.markWaived(tx, penaltyId, {
+            waivedBy: actor.userId,
+            reason: String(reason).trim()
+        });
         return { penalty, entry };
     });
 
@@ -543,21 +628,36 @@ async function uploadProof(db, contributionId, file, { actor, audit }) {
     const contribution = await repo.getContribution(db, contributionId);
     if (!contribution) throw new NotFound("That contribution was not found in this club.");
 
-    if (!file) throw new BadRequest("Attach a file.");
+    if (toCents(contribution.captured_amount) <= 0)
+        throw new RuleRefusal("Capture a contribution before attaching proof of payment (REQ-53).");
+    if (!file || !file.size) throw new BadRequest("Attach a non-empty file.");
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
         throw new BadRequest("Only JPEG, PNG or PDF files are accepted (REQ-53).");
     }
     if (file.size > MAX_FILE_SIZE) {
-        throw new BadRequest(`That file is too large. The limit is 5 MB (REQ-53); this one is ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
+        throw new BadRequest(
+            `That file is too large. The limit is 5 MB (REQ-53); this one is ${(file.size / (1024 * 1024)).toFixed(1)} MB.`
+        );
     }
 
-    const saved = await withClubTransaction(db.clubId, (tx) => repo.upsertProof(tx, contributionId, {
-        fileData: file.buffer,
-        mimeType: file.mimetype,
-        originalFilename: file.originalname.slice(0, 255),
-        fileSize: file.size,
-        uploadedBy: actor.userId
-    }));
+    const b = file.buffer;
+    const signature =
+        file.mimetype === "application/pdf"
+            ? b.subarray(0, 5).toString() === "%PDF-"
+            : file.mimetype === "image/png"
+              ? b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+              : b.length >= 3 && b[0] === 255 && b[1] === 216 && b[2] === 255;
+    if (!signature)
+        throw new BadRequest("The file contents do not match its JPEG, PNG or PDF type.");
+    const saved = await withClubTransaction(db.clubId, (tx) =>
+        repo.upsertProof(tx, contributionId, {
+            fileData: file.buffer,
+            mimeType: file.mimetype,
+            originalFilename: file.originalname.slice(0, 255),
+            fileSize: file.size,
+            uploadedBy: actor.userId
+        })
+    );
 
     await audit("contribution.uploadProof", "Success", {
         detail: `${actor.fullName} attached ${saved.original_filename} (${(saved.file_size / 1024).toFixed(0)} KB) as proof of payment for ${contribution.full_name}'s contribution.`,
@@ -574,7 +674,18 @@ async function uploadProof(db, contributionId, file, { actor, audit }) {
     };
 }
 
-async function getProofMeta(db, contributionId) {
+async function assertProofAccess(db, contributionId, actor) {
+    const contribution = await repo.getContribution(db, contributionId);
+    if (
+        !contribution ||
+        (!OFFICERS.includes(actor?.role) && contribution.member_id !== actor?.memberId)
+    ) {
+        throw new NotFound("That contribution was not found in your accessible records.");
+    }
+}
+
+async function getProofMeta(db, contributionId, { actor }) {
+    await assertProofAccess(db, contributionId, actor);
     const meta = await repo.getProofMeta(db, contributionId);
     if (!meta) return null;
     return {
@@ -587,7 +698,8 @@ async function getProofMeta(db, contributionId) {
 }
 
 /** The raw bytes for a download response. Route sets the content type and disposition. */
-async function downloadProof(db, contributionId) {
+async function downloadProof(db, contributionId, { actor }) {
+    await assertProofAccess(db, contributionId, actor);
     const file = await repo.getProofFile(db, contributionId);
     if (!file) throw new NotFound("No proof of payment has been uploaded for this contribution.");
     return file;
@@ -611,6 +723,7 @@ module.exports = {
     applyExcess,
     listCycles,
     getCycleDetail,
+    listPenalties,
     waivePenalty,
     uploadProof,
     getProofMeta,
