@@ -97,11 +97,10 @@ Requirements not listed are not yet implemented. They are collected at the end.
 
 | REQ | Requirement | Implemented in | Evidence |
 |---|---|---|---|
-| REQ-88 | Every financial event posted to the ledger | `ledger.service.js` → `appendEntry` | manual |
-| REQ-89 | Entries carry a running balance | `ledger_entry.resulting_balance`, computed under a club row lock | manual: the running balance reconciles line by line in date order |
+| REQ-89 | Every financial event records club, timestamp, type, member, amount, actor and resulting balance | `ledger.service.js` → `appendEntry`, club row lock | Ledger integration verifies reversal values and pool balance |
 | REQ-90 | No posted entry may be altered or removed | migration 006 triggers | database: `UPDATE` and `DELETE` both raise |
-| REQ-91 | Correction by reversing entry, with a reason | `reverses_id`, `reversal_needs_reason` constraint | database |
-| REQ-92 | Only the Treasurer may post | `rules/permissions.js` | automated |
+| REQ-91 | Equal/opposite correction with original reference and reason | `reversals.service.js`, migration 018, Ledger screen | `integration/ledger-reversals.js`: exact amount, duplicate guards, immutable original and rollback |
+| REQ-92 | Treasurer posts reversals; payout reversal needs prior Chairperson approval | `reversals.service.js`, `ledger.reverseApprove`, migration 018 | Real HTTP permissions and approval/posting tests; REQ-63 waiver exception recorded in decision 42 |
 | REQ-93 | Fixed-precision monetary arithmetic | `lib/money.js` (integer cents); `NUMERIC(12,2)` columns; the `pg` numeric parser is deliberately left returning strings | automated: `rules.test.js` |
 | REQ-94 | Member statement: every entry affecting them, chronological, running balance | `ledger.service.js` → `generateMemberStatement` | manual: a member reads their own; another member's is refused |
 | REQ-95 | Every member sees the club pool balance | `GET /api/ledger/pool`, permission `view.pool` | automated (permission); manual |
@@ -221,6 +220,19 @@ readable but cannot be newly applied. No shared database was migrated for testin
 
 ---
 
+## Date handling and ledger corrections follow-on
+
+| Requirement | Implementation | Evidence |
+|---|---|---|
+| REQ-31/33 | DATE strings; South African dates; catch-up uses the open cycle's pinned version | Decision 41; date-display tests and isolated integration |
+| REQ-90/91 | Original immutable; equal/opposite reversal with reference and reason; one reversal per original | Migration 018; ledger-reversals integration, including database guards |
+| REQ-92 | Treasurer posts; payout request → Chairperson approval → Treasurer posting | Actual HTTP role/tenant/approval tests; decision 42 records REQ-63 exception |
+
+A ledger correction does not cancel/replay the underlying business process or
+recalculate captured allocations. See decision 42 for the operational boundary.
+
+---
+
 ## Not yet implemented
 
 Scheduled for the sprints after the preliminary release. The full, task-by-task list with sizes and suggested order is in `docs/remaining-work.md`.
@@ -248,9 +260,10 @@ REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 254 automated tests, timezone-independent calendar rules
+npm test     # 258 automated tests, timezone-independent calendar rules
 npm run test:governance  # isolated PostgreSQL engine, no external database
 node server/integration/screens.js  # T3 workflows, isolated database + HTTP
+node server/integration/ledger-reversals.js  # ledger approvals, rollback and dates
 npm run check  # every relative import resolves
 ```
 

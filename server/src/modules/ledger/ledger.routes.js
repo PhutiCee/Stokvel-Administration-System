@@ -16,14 +16,23 @@
  */
 
 const express = require("express");
+const reversals = require("./reversals.service");
 const service = require("./ledger.service");
 const { requireClubContext } = require("../../middleware/tenancy");
 const { authorize } = require("../../middleware/authorize");
 const { asyncRoute } = require("../../middleware/errors");
-const { NotFound, Forbidden } = require("../../lib/errors");
+const { NotFound, Forbidden, BadRequest } = require("../../lib/errors");
 
 const router = express.Router();
 router.use(requireClubContext);
+
+for(const param of ["entryId","requestId"])router.param(param,(req,res,next,value)=>next(
+ /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)?undefined:new BadRequest("Invalid ledger identifier.")));
+const ctx=req=>({actor:req.actor,audit:req.audit});
+router.get("/reversals",authorize("view.ledger"),asyncRoute(async(req,res)=>res.json({requests:await reversals.list(req.db)})));
+router.post("/:entryId/reverse",authorize("ledger.reverse"),asyncRoute(async(req,res)=>res.status(201).json(await reversals.reverse(req.db,req.params.entryId,req.body||{},ctx(req)))));
+router.post("/reversals/:requestId/decision",authorize("ledger.reverseApprove"),asyncRoute(async(req,res)=>res.json(await reversals.decide(req.db,req.params.requestId,req.body||{},ctx(req)))));
+router.post("/reversals/:requestId/post",authorize("ledger.reverse"),asyncRoute(async(req,res)=>res.json(await reversals.postApproved(req.db,req.params.requestId,ctx(req)))));
 
 // --- the whole book --------------------------------------------------------
 router.get("/", authorize("view.ledger"), asyncRoute(async (req, res) => {
@@ -41,6 +50,7 @@ router.get("/", authorize("view.ledger"), asyncRoute(async (req, res) => {
             description: e.description,
             reference: e.reference,
             reversesId: e.reverses_id,
+            reversedBy: e.reversed_by,
             reason: e.reason,
             postedAt: e.posted_at,
             postedByName: e.posted_by_name,

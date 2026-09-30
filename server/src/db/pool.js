@@ -28,6 +28,8 @@ const { env } = require("../config/env");
 // OID 1700 = NUMERIC. Listed explicitly so that nobody "helpfully" adds a
 // parser later without reading this comment.
 types.setTypeParser(1700, (value) => value);
+// PostgreSQL DATE has no timezone: never turn it into a local-midnight Date.
+types.setTypeParser(1082, (value) => value);
 
 const pool = new Pool({
     connectionString: env.DATABASE_URL,
@@ -35,7 +37,8 @@ const pool = new Pool({
     max: env.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 30_000,
-    application_name: "stokvel-admin-system"
+    application_name: "stokvel-admin-system",
+    options: "-c timezone=Africa/Johannesburg"
 });
 
 pool.on("error", (err) => {
@@ -68,7 +71,7 @@ const TENANT_SCOPED_TABLES = [
     "cycle",
     "contribution",
     "penalty",
-    "ledger_entry",
+    "ledger_entry", "ledger_reversal_request",
     "reconciliation",
     "payout",
     "queue_swap",

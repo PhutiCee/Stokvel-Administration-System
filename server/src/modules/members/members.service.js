@@ -1,4 +1,5 @@
 "use strict";
+const { todayIso, assertIsoDate, isIsoDate } = require("../../lib/dates");
 
 /**
  * Membership service.
@@ -59,10 +60,10 @@ function checkIdNumber(idNumber) {
     if (mm < 1 || mm > 12) return "That identity number contains an impossible month.";
 
     // Two-digit year: assume nobody registering is over 100.
-    const nowYY = new Date().getFullYear() % 100;
+    const nowYY = Number(todayIso().slice(0,4)) % 100;
     const century = yy <= nowYY ? 2000 : 1900;
-    const date = new Date(century + yy, mm - 1, dd);
-    if (date.getMonth() !== mm - 1 || date.getDate() !== dd) {
+    const date = `${century + yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    if (!isIsoDate(date)) {
         return "That identity number contains an impossible date of birth.";
     }
 
@@ -134,29 +135,23 @@ function validateRegistration(input) {
  */
 async function previewCatchUp(db, joinDate) {
     const [constitution, cycle] = await Promise.all([
-        repo.currentConstitution(db),
+        repo.openCycleConstitution(db),
         repo.openCycle(db)
     ]);
 
-    if (!constitution) {
-        throw new RuleRefusal("This club has no constitution on record, so contributions cannot be calculated.");
-    }
-    if (!cycle) {
-        return { amount: "0.00", cycle: null, explanation: null };
-    }
+    if (!cycle) return { amount: "0.00", cycle: null, explanation: null };
+    if (!constitution) throw new RuleRefusal("The open cycle has no pinned constitution.");
 
-    const joined = new Date(joinDate);
-    const cycleStart = new Date(cycle.start_date);
+    const joined = assertIsoDate(joinDate);
+    const cycleStart = assertIsoDate(cycle.start_date);
     if (joined <= cycleStart) {
         return { amount: "0.00", cycle: null, explanation: null };
     }
 
     const amountCents = toCents(constitution.contribution_amount);
 
-    // pg returns DATE as a JavaScript Date. Rendered as-is it produces
-    // "Tue Sep 01 2026 00:00:00 GMT+0000", which is not a sentence to read to a
-    // new member across a table.
-    const asDate = (d) => new Date(d).toISOString().slice(0, 10);
+    // Compare and present calendar days without timestamp conversion.
+    const asDate = (d) => assertIsoDate(d);
 
     return {
         amount: toNumeric(amountCents),
@@ -193,7 +188,8 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
         throw new BadRequest("Some details need correcting.", { fields: errors });
     }
 
-    const joinDate = input.joinDate || new Date().toISOString().slice(0, 10);
+    const joinDate = input.joinDate || todayIso();
+    if (!isIsoDate(joinDate)) throw new BadRequest("Join date must be a real date in YYYY-MM-DD format.");
     const role = input.role || "Member";
     const club = await repo.clubType(db);
 

@@ -1,4 +1,5 @@
 "use strict";
+const { todayIso, isIsoDate } = require("../../lib/dates");
 
 /**
  * Platform administration. REQ-18, REQ-19, REQ-20, REQ-21.
@@ -128,7 +129,9 @@ async function createClub(input, { actor, audit }) {
         throw new BadRequest("Some details need correcting.", { fields: errors });
     }
 
-    const cycleStart = input.cycleStartDate || new Date().toISOString().slice(0, 10);
+    const cycleStart = input.cycleStartDate || todayIso();
+    if (!isIsoDate(cycleStart) || (input.registrationDate && !isIsoDate(input.registrationDate)))
+        throw new BadRequest("Cycle start and registration dates must be real dates in YYYY-MM-DD format.");
     const client = await pool.connect();
 
     try {

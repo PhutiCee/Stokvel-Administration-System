@@ -1,4 +1,5 @@
 "use client";
+import { todayIso } from "@/lib/format";
 
 /**
  * The Platform Administrator's screen. REQ-18, REQ-19, REQ-20, REQ-21.
@@ -337,7 +338,7 @@ function SuspendDialog({ club, onClose, onDone }) {
 
 const EMPTY = {
   name: "", shortName: "", clubType: "Rotating", town: "",
-  contributionAmount: "", cycleFrequency: "Monthly", cycleStartDate: new Date().toISOString().slice(0, 10),
+  contributionAmount: "", cycleFrequency: "Monthly", cycleStartDate: todayIso(),
   penaltyAmount: "", gracePeriodDays: 5, quorumPercentage: 50, exitNoticeDays: 30,
   payoutOrderMethod: "Random draw", forfeitureRule: "",
   waitingPeriodDays: 180, benefitSchedule: [{ category: "Principal member", amount: "" }],

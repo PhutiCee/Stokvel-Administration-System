@@ -1,4 +1,5 @@
 "use client";
+import { todayIso } from "@/lib/format";
 
 /**
  * Contributions. Use Case 2.
@@ -364,7 +365,7 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
   const [method, setMethod] = useState("Cash");
   const [reference, setReference] = useState("");
   const [receiptDate, setReceiptDate] = useState(
-    new Date().toISOString().slice(0, 10),
+    todayIso(),
   );
   const [fields, setFields] = useState({});
   const [error, setError] = useState(null);

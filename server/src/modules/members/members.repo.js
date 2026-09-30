@@ -20,8 +20,8 @@ async function listMembers(db, { includeExited = false } = {}) {
         `SELECT m.member_id,
                 m.role,
                 m.standing,
-                m.join_date,
-                m.exit_date,
+                m.join_date::text AS join_date,
+                m.exit_date::text AS exit_date,
                 m.queue_position,
                 m.catch_up_amount,
                 u.user_id,
@@ -58,7 +58,7 @@ async function listMembers(db, { includeExited = false } = {}) {
 
 async function getMember(db, memberId) {
     return db.one(
-        `SELECT m.*, u.full_name, u.phone, u.email, u.id_number,
+        `SELECT m.*, m.join_date::text, m.exit_date::text, u.full_name, u.phone, u.email, u.id_number,
                 u.postal_address, u.last_login_at
            FROM member m
            JOIN user_account u ON u.user_id = m.user_id
@@ -197,9 +197,16 @@ async function currentConstitution(db) {
     );
 }
 
+// Catch-up must use the version pinned to the open cycle (REQ-33).
+async function openCycleConstitution(db) {
+    return db.one(`SELECT k.* FROM constitution k JOIN cycle c
+        ON c.club_id=k.club_id AND c.constitution_id=k.constitution_id
+        WHERE c.club_id=$1 AND c.status='Open'`,[db.clubId]);
+}
+
 async function openCycle(db) {
     return db.one(
-        `SELECT cycle_id, sequence_number, start_date, due_date
+        `SELECT cycle_id, sequence_number, start_date::text, due_date::text
            FROM cycle
           WHERE club_id = $1 AND status = 'Open'
           LIMIT 1`,
@@ -228,7 +235,7 @@ module.exports = {
     countActiveMembers,
     updateAccountContact,
     updateNextOfKin,
-    currentConstitution,
+    currentConstitution, openCycleConstitution,
     openCycle,
     clubType
 };

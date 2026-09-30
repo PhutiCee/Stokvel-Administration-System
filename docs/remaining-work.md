@@ -22,10 +22,10 @@ Every requirement below was checked against the actual code, not just against
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
-Tests: 254 automated tests pass with timezone-independent calendar rules,
+Tests: 258 automated tests pass with timezone-independent calendar rules,
 plus `npm run test:governance`
 for isolated database/HTTP checks. Imports resolve
-(`npm run check`). Next free migration number: **018** (016 and 017 are governance).
+(`npm run check`). Next free migration number: **019** (016–017 governance; 018 ledger reversals).
 
 ## 2. How to work on any task
 
@@ -70,7 +70,10 @@ calendar-day rules no longer depend on the host timezone. New cycles select the
 constitution by commencement under REQ-33 and permanently pin that version.
 Pre-existing cycles keep their former due-date selection; no historic money is
 rewritten. Decisions 38 and the integration checks record this migration boundary.
-Documentation numbering cleanup unrelated to governance remains separate work.
+Follow-on date fixes now preserve PostgreSQL DATE values as text, use South African
+session/calendar dates and browser display, validate member/platform dates and use
+the open cycle's pinned constitution for catch-up. Decision 41 records these changes.
+Documentation numbering cleanup unrelated to these changes remains separate work.
 
 **T3. Screens for backends that already exist — completed.**
 - Contributions: Treasurer uploads/replaces/removes JPEG, PNG or PDF proof against
@@ -108,18 +111,25 @@ must be supplied by the club; the documents do not provide numerical thresholds.
 See decisions 37–39 and `npm run test:governance`. T7/T10 and reconciliation capture
 remain separately assigned. No shared database has been migrated here.
 
-**T6. Reversing entries - REQ-91, 92.** (M)
-The permission `ledger.reverse` exists but there is no route. Treasurer posts a reversing
-entry of equal and opposite amount referencing the original (`appendEntry` already
-accepts `reversesId` and `reason`; one reversal per entry is enforced by an index).
-A reversal of a payout needs Chairperson approval first. Penalty waiver already does
-this for penalties only.
+**T6. Ledger reversals — implemented with migration 018.**
+Treasurer posts an equal/opposite entry with the original reference and a reason.
+Payout/claim reversals follow request → Chairperson approval → Treasurer posting.
+Original records stay immutable; duplicate, cross-club and reversal-of-reversal
+attempts are refused. The Ledger screen exposes requests and actions.
+REQ-63's Chairperson penalty-waiver flow remains the exception to general REQ-92.
+See decision 42 and `node server/integration/ledger-reversals.js`.
+
+**Boundary to resolve separately:** ledger reversal does not rewind contribution
+allocations/credits, queue positions or claim/payout workflow status. That requires
+source-operation compensation rules and allocation history not provided by these
+requirements. Do not treat a ledger reversal as cancellation of the original process.
 
 ### 4.2 Member lifecycle
 
 **T7. Standing engine and defaulter pipeline - REQ-44, 101, 102, 103.** (L)
-Important: **nothing in the application code ever changes a member's standing.** It is
-only set by the seed script. Payout eligibility, arrears rulings, claim eligibility and
+The automatic standing pipeline is still outstanding. Governance now changes standing
+on an approved expulsion, but automated warning/suspension/reinstatement remains
+assigned to another member. Payout eligibility, arrears rulings, claim eligibility and
 distributions all depend on it, so in real use they would run on stale data.
 Build: a pipeline Warning, Suspension, Expulsion advancing on thresholds in the
 constitution (there are no threshold columns yet, so add them and validate them in
@@ -217,9 +227,8 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 
 ## 6. Documentation to correct
 
-- `docs/traceability.md`, Ledger section: rows are labelled REQ-88 to REQ-95, but in
-  the SRS ledger requirements are REQ-89 to REQ-94. REQ-88 is the burial-claims
-  ordering rule, so the number is used twice.
+- Ledger numbering is now corrected to REQ-89–95. Audit remaining sections against
+  the supplied SRS before submission.
 - `docs/traceability.md` says the Assistant is REQ-110 to 118. In the SRS it is
   REQ-119 to 128; REQ-110 to 118 are the annual report and dashboards.
 - Thirty SRS requirements are never mentioned in `traceability.md`: REQ-40, 44 to 48,
@@ -236,7 +245,7 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 2. T4 Reconciliation remains. T5 Governance is implemented; apply migrations 016 and 017
    and run the governance demo checks.
 3. T7 Standing engine, then T8 Exit processing.
-4. T6, T13, T12 as time allows.
+4. T12 role dashboards remain; T6 ledger reversals are implemented. T13 is assigned.
 5. T10, T11, T14, T15 last; leave what does not fit in `traceability.md` under
    "Not yet implemented" so the marker sees it was a decision, not an oversight.
 6. D1, D2, D3 only after the SRS is amended.

@@ -1,4 +1,5 @@
 "use client";
+import { todayIso } from "@/lib/format";
 
 /**
  * The member register. REQ-34 to REQ-43, REQ-49.
@@ -23,7 +24,7 @@ const ROLES = ["Member", "Secretary", "Treasurer", "Chairperson"];
 
 const EMPTY = {
   fullName: "", idNumber: "", phone: "", email: "", postalAddress: "",
-  role: "Member", joinDate: new Date().toISOString().slice(0, 10),
+  role: "Member", joinDate: todayIso(),
   nextOfKin: { name: "", relationship: "", phone: "" }
 };
 

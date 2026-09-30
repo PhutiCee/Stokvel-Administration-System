@@ -996,3 +996,60 @@ of South Africa. Production date and penalty rules are unchanged in this update.
 
 Excluded by assignment: REQ-3, REQ-11, REQ-58, REQ-100, REQ-101–103, notifications,
 and Reconciliation (Use Case 5). No code for those features is introduced here.
+
+
+## 41. Consistent South African date handling
+
+30 September 2026. PostgreSQL DATE parsing now preserves YYYY-MM-DD text, and
+connections request Africa/Johannesburg as their SQL session timezone. Timestamps
+remain instants. This also aligns CURRENT_DATE defaults and date comparisons with
+the club's South African day. Report/distribution timestamp boundaries explicitly
+use Africa/Johannesburg. No old records are re-dated.
+
+Browser formatters preserve date-only values and display timestamps in South African
+time, independently of the device timezone. Contribution, member, claim and platform
+form defaults use the South African day. Member join dates and platform dates reject
+impossible calendar input. Catch-up compares calendar strings and takes the amount
+from the open cycle's pinned constitution, preserving REQ-33's cycle boundary.
+
+Evidence: date-display unit checks in UTC, South Africa, Los Angeles and Kolkata;
+DATE parser, SA midnight and API calendar-date checks in ledger-reversals integration.
+The configured deployment's PostgreSQL/proxy connection should also be checked with
+its normal configuration; the automated database checks use an isolated engine.
+
+## 42. General ledger corrections and payout reversal approval
+
+30 September 2026. Migration 018 introduces immutable reversal requests and database
+guards on new reversals. Treasurer posts a correction of equal and opposite amount,
+linked to the original, with a reason. A payout (including distribution and burial
+payouts, plus the legacy Claim entry type) needs a recorded Chairperson decision
+first. Approval changes no money: a Treasurer subsequently posts the exact approved
+request. A requester cannot approve their own request; an approver cannot post it.
+Rejected requests remain visible and can be followed by a new request. Posted
+requests are final. Duplicate reversals and reversals of reversals are refused.
+
+Posting locks the club and commits the request update and ledger entry together.
+The database checks equal/opposite amounts, matching club/member/source identifiers,
+reason and prior payout approval. Existing ledger entries are never changed.
+Service auditing records success/refusal; API permissions remain authoritative.
+
+DOCUMENT CONFLICT: REQ-63 explicitly gives penalty waiver to the Chairperson and
+requires a reversing entry. REQ-92 says only Treasurer posts reversing entries.
+We preserve the already-implemented REQ-63 exception: the general ledger action
+refers penalties to the dedicated waiver flow so the penalty flag and ledger stay
+consistent. The group should record this exception explicitly in the SRS.
+
+SCOPE: correcting a ledger entry does not mean undoing a business process. This
+implementation does not reconstruct contribution allocations/credits, rewind a
+rotating queue or reopen approved claims/payouts. Those operations need separate
+compensation rules and source allocation history. The screen states this boundary;
+do not claim that reversal cancels the original process. Ledger/pool and annual
+report totals incorporate reversals; source-based contribution/distribution inputs
+are not automatically restated by this operation. Review this boundary before
+using ledger corrections to fix incorrectly captured operational data.
+
+Evidence: isolated real HTTP/database tests in `server/integration/ledger-reversals.js`
+cover permissions, pending/approval/posting, unchanged balance at approval, exact
+opposing amounts, rejection/retry, database guards, history immutability, duplicate
+and tenant refusals, and rollback after insertion. Existing governance and screen
+integration tests also pass. No shared database was migrated or branch pushed.

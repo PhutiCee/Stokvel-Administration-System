@@ -278,3 +278,27 @@ See decisions 37–39 in `Docs/Desicions.md` for these upgrade boundaries.
 including legacy data preservation, proposals, threshold enforcement, atomic
 succession, pinned cycle versions and annual reports. It needs no Supabase
 credentials and does not reset shared data. `npm test` runs 254 unit tests.
+
+
+### Date fixes and ledger reversals (migration 018)
+
+After applying the previous governance and screen updates, apply outstanding
+migrations with `npm run migrate` (keep migrations 016/017 unchanged). Ledger now
+supports Treasurer corrections and payout reversal requests: Chairperson approves,
+then Treasurer posts. The original remains immutable. Penalty waivers continue
+through Contributions under REQ-63; see decision 42 for the REQ-92 exception.
+Ledger reversal does not rewind source allocations, queue turns or claim workflows.
+
+Dates remain YYYY-MM-DD for calendar values and timestamps display in South African
+time. The database connection requests the same timezone. Run:
+
+```bash
+npm test
+node server/integration/ledger-reversals.js
+node server/integration/screens.js
+npm run test:governance
+npm run check
+npm run build
+```
+
+Integration tests use an isolated engine, not the configured shared database.

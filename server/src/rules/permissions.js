@@ -52,7 +52,7 @@ const MATRIX = {
     Chairperson: [
         "view.governance", "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.ledger", "view.members", "view.reconciliation",
-        "payout.view", "payout.approve", "payout.assess", "penalty.waive",
+        "payout.view", "payout.approve", "payout.assess", "penalty.waive", "ledger.reverseApprove",
         // REQ-82. The Chairperson approves a year-end distribution the same
         // way they approve any other payout.
         "distribution.view", "distribution.approve",

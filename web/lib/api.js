@@ -157,6 +157,10 @@ export const contributions = {
 };
 
 export const ledger = {
+  reversals: opts => api.get("/api/ledger/reversals",opts),
+  reverse: (id,reason) => api.post(`/api/ledger/${id}/reverse`,{reason}),
+  decideReversal: (id,decision,reason) => api.post(`/api/ledger/reversals/${id}/decision`,{decision,reason}),
+  postReversal: id => api.post(`/api/ledger/reversals/${id}/post`),
   list: (limit = 100, opts) => api.get(`/api/ledger?limit=${limit}`, opts),
   pool: (opts) => api.get("/api/ledger/pool", opts),
   /** REQ-94. Omit memberId for your own. */
