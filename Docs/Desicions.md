@@ -799,6 +799,10 @@ there is no temp file to clean up.
 
 ## 36. Governance freezes attendance and the constitutional rules used for a vote
 
+**Historical implementation note:** the assumed majorities and single-class model
+below are superseded by decision 37 and migration 017. They describe the first
+handoff, not the current voting workflow.
+
 REQ-104 to REQ-109 and REQ-32 are implemented by migration 016, the governance
 module and `/governance`. A Secretary or Chairperson records a completed meeting;
 only the Chairperson submits constitutional amendments and gives carried decisions
@@ -848,3 +852,100 @@ an isolated PGlite PostgreSQL engine. It needs no credentials and never connects
 to, truncates or rebuilds the shared Supabase database. It proves transaction
 rollback, constraints, tenant isolation, role checks and expulsion behaviour.
 It does not claim to test distributed concurrency or Supabase network behaviour.
+
+
+---
+
+## 37. Confirmed voting rules, pending proposals and officer succession
+
+This completes the T5 workflow against REQ-32 and REQ-104–109. The annual report
+in REQ-110 is also implemented. Notifications, the automatic defaulter pipeline
+and reconciliation capture remain with their assigned developers.
+
+**No invented majority.** The SRS refers to a majority for each amendment class
+but does not specify those classes, numbers, denominators or voting rights.
+The Chairperson records the rules already adopted in the club's constitution,
+with a source clause, effective date and explicit attestation. This one-time
+capture is immutable and audited. It is not permission to invent or change rules.
+If no adopted rules exist, the group/club must settle them before using binding
+governance; the application does not silently use 100% or a simple majority.
+The old `amendment_majority_percentage` column remains solely for compatibility;
+new decisions use the confirmed policy snapshot instead.
+
+The recorded policy specifies the General and Expulsion rules, the names and
+field coverage of amendment classes, and voting rights for suspended and in-arrears
+members. Parameters are limited to the actual club type. Each applicable parameter
+belongs to exactly one class. Fractions are exact: at least 2/3 of three voters
+means two votes, while more than 2/3 means three. The policy specifies whether the
+denominator is eligible attendees, votes cast excluding abstentions, or the full
+eligible electorate. An amendment spanning classes must satisfy all their rules.
+Quorum continues to use active membership as REQ-25 specifies; voting entitlement
+is recorded separately. Every eligible attendee is counted once in the tally.
+Future policy changes themselves require a proposal and a carried resolution under
+the existing policy; an officer cannot lower the threshold before voting.
+
+**Pending stage.** The Chairperson submits an immutable proposal before its vote.
+Submitting does not create a constitution version. A Secretary or Chairperson
+records the vote against that exact proposal at a meeting governed by the same
+version. Advisory votes leave it pending; rejection is a binding outcome requiring
+a new proposal to try again. A carried proposal can be applied once. The proposal's
+text, parameter values and effective date cannot be replaced when recording votes
+or applying them. Stale baselines and expired effective dates require a new proposal.
+
+**Succession.** An expulsion resolution can name an ordinary member in good standing
+to replace the officer. That identity and the subject's role are frozen in the vote.
+Application rechecks them, removes the expelled member from the queue, ends their
+membership and transfers the office in one transaction. If no replacement is named
+for the last Chairperson/Treasurer, recording/application is refused. Any failure
+rolls the whole operation back. The Secretary can record this vote, but only the
+Chairperson can apply it, consistent with the current permission model.
+
+**Historical evidence.** Membership status/role changes are captured automatically
+from migration 017 onward, including changes made by other modules. Meeting records
+freeze the eligible roster, actual attendance, voter counts and policy. For a past
+date, recorded member history at that South African day's end is used. Dates before
+the available history are refused rather than reconstructed from today's standing.
+Old meeting/resolution records remain readable. Unapplied legacy votes based on the
+assumptions from decision 36 cannot be applied; use a new meeting under confirmed
+rules. Already applied historical records are not rewritten.
+
+## 38. Constitutional amendments govern new cycles by commencement
+
+REQ-33 is now enforced for newly opened contribution cycles: an amendment is
+selected only when its effective date is strictly before the cycle commencement.
+The founding version can apply on its own effective date. Opening is permitted
+only on or after commencement. Each new cycle pins the selected constitution ID,
+which cannot later change; contribution amount, grace and penalty evaluation use
+that pinned version. Opening takes the same club lock as constitutional amendments.
+
+Migration 017 pins pre-existing cycles using the former due-date lookup, preserving
+the version that the earlier application would read when the migration runs. It
+never rebills them, changes captured money or guesses which version was originally
+used if that information was never stored. Historical monetary discrepancies, if
+any exist, need explicit ledger corrections, not an automatic rewrite.
+
+Calendar dates in the contribution repository travel as text. Input dates are
+validated, and grace expires at the end of the South African calendar day regardless
+of the server timezone. The previous timezone-sensitive fixture now states +02:00
+explicitly. Tests run under UTC, Africa/Johannesburg and America/Los_Angeles.
+
+## 39. Annual report uses the ledger and labels incomplete reconciliation
+
+REQ-110 is exposed as a read-only report on Governance for roles with `view.ledger`.
+It includes opening and closing pool balances, net contributions, net penalties,
+net payouts/claims, other net movements and membership movement. Reversals are
+classified against their original entry, including corrections posted in a later
+year. South African midnight defines calendar-year boundaries. Current-year reports
+are explicitly year-to-date. Monetary values remain decimal strings/integer cents.
+All report queries run in one SQL statement for one consistent snapshot.
+
+The report reads the latest reconciliation on/before its cut-off and shows its
+actual date. Missing records, a record older than the cut-off and a non-zero
+difference are shown explicitly; it never assumes that a stale bank balance is a
+year-end verification. Memberships with an ended standing but no exit date are
+excluded from movement counts and disclosed as unverifiable. This read-only view
+does not implement or modify the separately assigned reconciliation capture flow.
+
+Validation: 254 unit tests; isolated PostgreSQL migration-upgrade, service and HTTP
+checks; production build; browser checks for proposal, meeting, vote and application.
+The isolated engine does not prove multi-instance concurrency or Supabase networking.

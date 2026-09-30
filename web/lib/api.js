@@ -198,6 +198,11 @@ export const auth = {
 };
 // Use Case 7: meetings and resolutions.
 export const governance = {
+  annualReport: year => api.get('/api/governance/annual-report?year='+encodeURIComponent(year)),
+  settings: () => api.get('/api/governance/settings'),
+  recordPolicy: data => api.post('/api/governance/settings',data),
+  proposals: () => api.get('/api/governance/proposals'),
+  propose: data => api.post('/api/governance/proposals',data),
   list: () => api.get('/api/governance'),
   get: id => api.get(`/api/governance/${id}`),
   candidates: date => api.get(`/api/governance/candidates?date=${encodeURIComponent(date)}`),

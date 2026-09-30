@@ -1,21 +1,27 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ClipboardList } from "lucide-react";
 import { governance } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import Button from "@/components/ui/Button";
-import { Input, Select, Textarea, Field } from "@/components/ui/Input";
+import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import {
   Card,
   CardHeader,
   CardBody,
   Alert,
   Badge,
-  Loading,
   Empty,
+  Loading,
 } from "@/components/ui/States";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-
+import PolicyEditor, {
+  emptyPolicy,
+  PolicySummary,
+  FIELD_LABELS,
+  describeRule,
+} from "@/components/governance/PolicyEditor";
+import AnnualReport from "@/components/governance/AnnualReport";
+import AmendmentForm from "@/components/governance/AmendmentForm";
 const today = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Johannesburg",
@@ -23,279 +29,464 @@ const today = () =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-const fields = [
-  ["contributionAmount", "Contribution amount (R)", "number"],
-  ["penaltyAmount", "Late penalty (R)", "number"],
-  ["gracePeriodDays", "Grace period (days)", "number"],
-  ["quorumPercentage", "Quorum (%)", "number"],
-  ["amendmentMajorityPercentage", "Amendment majority (%)", "number"],
-  ["exitNoticeDays", "Exit notice (days)", "number"],
-  ["forfeitureRule", "Exit forfeiture rule", "text"],
-];
+function Changes({ changes }) {
+  return (
+    <dl className="space-y-2 text-sm">
+      {Object.entries(changes).map(([key, value]) => (
+        <div key={key}>
+          <dt className="font-medium">{FIELD_LABELS[key] || key}</dt>
+          <dd>
+            {key === "governancePolicy" ? (
+              <PolicySummary policy={value} />
+            ) : Array.isArray(value) ? (
+              value.map((v) => `${v.category}: R${v.amount}`).join("; ")
+            ) : (
+              String(value)
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 export default function GovernancePage() {
-  const { can, club } = useSession();
-  const mayRecord = can("governance.record");
+  const { can, club } = useSession(),
+    mayRecord = can("governance.record"),
+    mayPropose = can("constitution.propose");
   const [meetings, setMeetings] = useState(null),
-    [selected, setSelected] = useState(null),
+    [settings, setSettings] = useState(null),
+    [proposals, setProposals] = useState([]),
+    [selected, setSelected] = useState(""),
     [detail, setDetail] = useState(null);
-  const [creating, setCreating] = useState(false),
+  const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false),
+    [creating, setCreating] = useState(false),
+    [proposing, setProposing] = useState(false),
     [confirm, setConfirm] = useState(null);
   const [date, setDate] = useState(today),
+    [agenda, setAgenda] = useState(""),
+    [minutes, setMinutes] = useState(""),
+    [attendance, setAttendance] = useState([]),
     [candidates, setCandidates] = useState(null),
-    [attendance, setAttendance] = useState([]);
-  const [agenda, setAgenda] = useState(""),
-    [minutes, setMinutes] = useState("");
+    [people, setPeople] = useState([]);
+  const [policy, setPolicy] = useState(emptyPolicy),
+    [policyDate, setPolicyDate] = useState(""),
+    [attested, setAttested] = useState(false),
+    [refreshKey, setRefreshKey] = useState(0);
   const [kind, setKind] = useState("General"),
     [text, setText] = useState(""),
+    [proposalId, setProposalId] = useState(""),
+    [memberId, setMemberId] = useState(""),
+    [successor, setSuccessor] = useState(""),
     [votes, setVotes] = useState({
       votesFor: "",
       votesAgainst: "",
       abstentions: "",
     });
-  const [memberId, setMemberId] = useState(""),
-    [changes, setChanges] = useState({}),
-    [effectiveDate, setEffectiveDate] = useState("");
   useEffect(() => {
-    let live = true;
-    governance
-      .list()
-      .then((v) => {
-        if (live) setMeetings(v);
+    let active = true;
+    Promise.all([
+      governance.list(),
+      governance.settings(),
+      governance.proposals(),
+    ])
+      .then(([m, s, p]) => {
+        if (active) {
+          setMeetings(m);
+          setSettings(s);
+          setProposals(p);
+          if (s.canInitialise)
+            setPolicy((old) => (old.source ? old : emptyPolicy(s.fields)));
+        }
       })
       .catch((e) => {
-        if (live) setError(e.message);
+        if (active) setError(e.message);
       });
     return () => {
-      live = false;
+      active = false;
     };
-  }, []);
+  }, [refreshKey, club?.clubId]);
   useEffect(() => {
-    let live = true;
+    let active = true;
     setDetail(null);
     if (selected)
       governance
         .get(selected)
-        .then((v) => {
-          if (live) setDetail(v);
+        .then((d) => {
+          if (active) setDetail(d);
         })
         .catch((e) => {
-          if (live) setError(e.message);
+          if (active) setError(e.message);
         });
     return () => {
-      live = false;
+      active = false;
     };
-  }, [selected]);
+  }, [selected, refreshKey]);
   useEffect(() => {
     if (!mayRecord) return;
-    let live = true;
-    setCandidates(null);
+    let active = true;
     setAttendance([]);
-    governance
-      .candidates(creating ? date : today())
-      .then((v) => {
-        if (live) setCandidates(v);
+    setCandidates(null);
+    Promise.all([governance.candidates(date), governance.candidates(today())])
+      .then(([a, b]) => {
+        if (active) {
+          setCandidates(a);
+          setPeople(b.members);
+        }
       })
       .catch((e) => {
-        if (live) setError(e.message);
+        if (active) setError(e.message);
       });
     return () => {
-      live = false;
+      active = false;
     };
-  }, [date, creating, club?.clubId, mayRecord]);
-  async function run(fn) {
+  }, [date, mayRecord, refreshKey, club?.clubId]);
+  async function action(fn, message) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await fn();
+      setRefreshKey((k) => k + 1);
+      setNotice(message);
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
+  function resetVote() {
+    setText("");
+    setVotes({ votesFor: "", votesAgainst: "", abstentions: "" });
+    setProposalId("");
+    setMemberId("");
+    setSuccessor("");
+  }
   async function saveMeeting(e) {
     e.preventDefault();
-    await run(async () => {
+    await action(async () => {
       const m = await governance.recordMeeting({
         date,
         agenda,
         minutes,
         attendance,
       });
-      setMeetings(await governance.list());
       setSelected(m.meeting_id);
       setCreating(false);
       setAgenda("");
       setMinutes("");
-      setNotice("Meeting and attendance recorded.");
-    });
+      resetVote();
+    }, "Meeting and constitutional voting rules recorded.");
   }
-  async function saveResolution(e) {
+  async function saveVote(e) {
     e.preventDefault();
-    await run(async () => {
-      const proposed = Object.fromEntries(
-        Object.entries(changes).filter(([, v]) => v !== ""),
-      );
-      if (proposed.benefitSchedule)
-        proposed.benefitSchedule = proposed.benefitSchedule
-          .split("\n")
-          .filter(Boolean)
-          .map((line) => {
-            const parts = line.split(":");
-            if (parts.length !== 2)
-              throw new Error(
-                "Use one dependant category and amount per line, for example Spouse: 10000.",
-              );
-            return { category: parts[0].trim(), amount: parts[1].trim() };
-          });
+    await action(async () => {
       await governance.recordResolution(selected, {
         kind,
         text,
+        proposalId,
+        memberId,
+        successorMemberId: successor || null,
         ...Object.fromEntries(
           Object.entries(votes).map(([k, v]) => [k, Number(v)]),
         ),
-        memberId,
-        changes: proposed,
-        effectiveDate,
       });
-      setDetail(await governance.get(selected));
-      setText("");
-      setVotes({ votesFor: "", votesAgainst: "", abstentions: "" });
-      setChanges({});
-      setNotice("Resolution and voting outcome recorded.");
-    });
+      resetVote();
+    }, "Vote recorded. Only a carried decision can be applied.");
   }
-  const update = (key, value) => setChanges((s) => ({ ...s, [key]: value }));
-  const attendanceCount = detail?.attendance_count || 0;
-  const voteTotal = Object.values(votes).reduce((a, b) => a + Number(b), 0);
+  const totalVotes = Object.values(votes).reduce(
+      (a, b) => a + Number(b || 0),
+      0,
+    ),
+    chosenProposal = proposals.find((p) => p.proposal_id === proposalId),
+    subject = people.find((m) => m.member_id === memberId);
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-5">
+      <div className="flex flex-wrap justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-widest text-ink-500">
             Club records
           </p>
-          <h1 className="text-2xl font-semibold text-ink-900">Governance</h1>
+          <h1 className="text-2xl font-semibold">Governance</h1>
           <p className="text-sm text-ink-500 mt-1">
-            Meetings, member decisions and constitution changes.
+            Constitutional rules, pending proposals, meetings and decisions.
           </p>
         </div>
-        {can("governance.record") && (
-          <Button
-            onClick={() => {
-              setCreating(!creating);
-              setError("");
-            }}
-          >
-            {creating ? "Close meeting form" : "Record a meeting"}
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {mayRecord && (
+            <Button
+              disabled={!settings?.policy || busy}
+              onClick={() => setCreating((v) => !v)}
+            >
+              {creating ? "Close meeting form" : "Record a meeting"}
+            </Button>
+          )}
+          {mayPropose && (
+            <Button
+              variant="secondary"
+              disabled={!settings?.policy || busy}
+              onClick={() => setProposing((v) => !v)}
+            >
+              {proposing ? "Close proposal form" : "Propose amendment"}
+            </Button>
+          )}
+        </div>
       </div>
       {error && <Alert tone="exception">{error}</Alert>}
       {notice && <Alert tone="positive">{notice}</Alert>}
+      {settings && !settings.policy && (
+        <Card>
+          <CardHeader
+            title="Record the adopted voting rules"
+            description="No voting majority is assumed. Copy the club’s existing constitution before recording new binding decisions."
+          />
+          <CardBody>
+            {mayPropose && settings.canInitialise ? (
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  action(
+                    () =>
+                      governance.recordPolicy({
+                        policy,
+                        effectiveDate: policyDate,
+                        confirmAdopted: attested,
+                      }),
+                    "Adopted voting rules recorded. Future changes require a member resolution.",
+                  );
+                }}
+              >
+                <fieldset disabled={busy} className="space-y-4">
+                  <PolicyEditor
+                    fields={settings.fields}
+                    value={policy}
+                    onChange={setPolicy}
+                  />
+                  <Field
+                    label="Date these rules took effect"
+                    htmlFor="policy-date"
+                  >
+                    <Input
+                      id="policy-date"
+                      type="date"
+                      required
+                      max={today()}
+                      min={settings.constitution.effectiveDate}
+                      value={policyDate}
+                      onChange={(e) => setPolicyDate(e.target.value)}
+                    />
+                  </Field>
+                  <label className="flex gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={attested}
+                      onChange={(e) => setAttested(e.target.checked)}
+                    />
+                    I am recording existing adopted rules from the cited
+                    constitution, not changing the rules.
+                  </label>
+                  <Button type="submit" loading={busy}>
+                    Record adopted rules
+                  </Button>
+                </fieldset>
+              </form>
+            ) : (
+              <Alert>
+                Ask the Chairperson to record the club’s adopted constitutional
+                voting rules.
+              </Alert>
+            )}
+          </CardBody>
+        </Card>
+      )}
+      {settings?.policy && (
+        <Card>
+          <CardBody>
+            <details>
+              <summary className="cursor-pointer font-semibold text-sm">
+                Current voting rules · constitution version{" "}
+                {settings.constitution.version}
+              </summary>
+              <div className="mt-3">
+                <PolicySummary policy={settings.policy} />
+              </div>
+            </details>
+          </CardBody>
+        </Card>
+      )}
+      {proposing && settings?.policy && (
+        <Card>
+          <CardHeader
+            title="Submit an amendment for a member vote"
+            description="Submitting a proposal changes no rules. A quorate meeting must pass it under the existing constitution."
+          />
+          <CardBody>
+            <AmendmentForm
+              clubType={club?.clubType}
+              currentPolicy={settings.policy}
+              policyFields={settings.fields}
+              busy={busy}
+              today={today()}
+              onSubmit={(data) =>
+                action(
+                  () => governance.propose(data),
+                  "Pending proposal submitted. The Secretary can record its vote at a meeting.",
+                )
+              }
+            />
+          </CardBody>
+        </Card>
+      )}
+      <Card>
+        <CardHeader title="Amendment proposals" />
+        {!proposals.length ? (
+          <Empty title="No amendment proposals" />
+        ) : (
+          <CardBody className="space-y-3">
+            {proposals.map((p) => (
+              <details
+                key={p.proposal_id}
+                className="border border-line rounded p-3"
+              >
+                <summary className="cursor-pointer text-sm">
+                  <Badge tone={p.status === "Applied" ? "positive" : "neutral"}>
+                    {p.status}
+                  </Badge>{" "}
+                  <span className="ml-2">{p.text}</span>
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm">
+                    Proposed effective date: {p.effective_date}
+                  </p>
+                  <Changes changes={p.changes} />
+                  {p.status === "Pending" && p.effective_date < today() && (
+                    <Alert tone="attention">
+                      The effective date has passed. Submit a new proposal with
+                      a prospective date.
+                    </Alert>
+                  )}
+                </div>
+              </details>
+            ))}
+          </CardBody>
+        )}
+      </Card>
       {creating && (
         <Card>
           <CardHeader
             title="Record a completed meeting"
-            description="Attendance and minutes become a permanent record. Check them before saving."
+            description="Quorum uses active membership. Votes include only those entitled to vote under the constitution."
           />
           <CardBody>
             <form onSubmit={saveMeeting} className="space-y-4">
-              <Field label="Meeting date" htmlFor="meeting-date" required>
-                <Input
-                  id="meeting-date"
-                  type="date"
-                  value={date}
-                  max={today()}
-                  required
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </Field>
-              <Field label="Agenda" htmlFor="agenda" required>
-                <Textarea
-                  id="agenda"
-                  value={agenda}
-                  required
-                  maxLength={20000}
-                  onChange={(e) => setAgenda(e.target.value)}
-                />
-              </Field>
-              <Field label="Minutes" htmlFor="minutes" required>
-                <Textarea
-                  id="minutes"
-                  value={minutes}
-                  required
-                  maxLength={20000}
-                  onChange={(e) => setMinutes(e.target.value)}
-                />
-              </Field>
-              {!candidates ? (
-                <Loading label="Loading eligible members" />
-              ) : (
-                <fieldset>
-                  <legend className="text-sm font-medium mb-2">
-                    Members present
-                  </legend>
-                  <div className="grid sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                    {candidates.members.map((m) => (
-                      <label
-                        key={m.member_id}
-                        className="flex items-center gap-2 text-sm p-2 border border-line rounded"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={attendance.includes(m.member_id)}
-                          onChange={(e) =>
-                            setAttendance((a) =>
-                              e.target.checked
-                                ? [...a, m.member_id]
-                                : a.filter((id) => id !== m.member_id),
-                            )
-                          }
-                        />
-                        {m.full_name}
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-sm mt-3">
-                    {attendance.length} of {candidates.members.length} present ·{" "}
-                    {Math.ceil(
-                      (candidates.members.length *
-                        candidates.constitution.quorumPercentage) /
-                        100,
-                    )}{" "}
-                    required ({candidates.constitution.quorumPercentage}%).
+              <fieldset disabled={busy} className="space-y-4">
+                <Field label="Meeting date" htmlFor="meeting-date">
+                  <Input
+                    id="meeting-date"
+                    type="date"
+                    required
+                    max={today()}
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                  />
+                </Field>
+                <Field label="Agenda" htmlFor="agenda">
+                  <Textarea
+                    id="agenda"
+                    required
+                    maxLength={20000}
+                    value={agenda}
+                    onChange={(e) => setAgenda(e.target.value)}
+                  />
+                </Field>
+                <Field label="Minutes" htmlFor="minutes">
+                  <Textarea
+                    id="minutes"
+                    required
+                    maxLength={20000}
+                    value={minutes}
+                    onChange={(e) => setMinutes(e.target.value)}
+                  />
+                </Field>
+                {!candidates ? (
+                  <p className="text-sm">
+                    Choose a date with available membership history.
                   </p>
-                  <p className="text-xs text-ink-500 mt-1">
-                    Without quorum, every resolution will be advisory and cannot
-                    be applied.
-                  </p>
-                </fieldset>
-              )}
-              <Button
-                variant="secondary"
-                type="submit"
-                loading={busy}
-                disabled={!candidates}
-              >
-                Save meeting
-              </Button>
+                ) : (
+                  <fieldset>
+                    <legend className="text-sm font-semibold mb-2">
+                      Members present
+                    </legend>
+                    <div className="grid sm:grid-cols-2 gap-2 max-h-64 overflow-auto">
+                      {candidates.members.map((m) => (
+                        <label
+                          key={m.member_id}
+                          className="text-sm flex gap-2 p-2 border border-line rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={attendance.includes(m.member_id)}
+                            onChange={(e) =>
+                              setAttendance((a) =>
+                                e.target.checked
+                                  ? [...a, m.member_id]
+                                  : a.filter((x) => x !== m.member_id),
+                              )
+                            }
+                          />
+                          <span>
+                            {m.full_name}
+                            {!m.canVote && (
+                              <span className="block text-xs text-ink-500">
+                                Present, without voting rights
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-sm mt-3">
+                      {attendance.length} present;{" "}
+                      {Math.ceil(
+                        (candidates.members.length *
+                          candidates.constitution.quorumPercentage) /
+                          100,
+                      )}{" "}
+                      required for quorum. Eligible voters present:{" "}
+                      {
+                        candidates.members.filter(
+                          (m) => m.canVote && attendance.includes(m.member_id),
+                        ).length
+                      }
+                      .
+                    </p>
+                  </fieldset>
+                )}
+                <Button
+                  variant="secondary"
+                  type="submit"
+                  loading={busy}
+                  disabled={!candidates?.policy}
+                >
+                  Save meeting
+                </Button>
+              </fieldset>
             </form>
           </CardBody>
         </Card>
       )}
+      {can("view.ledger") && <AnnualReport />}
       {meetings === null ? (
         !error && <Loading />
-      ) : meetings.length === 0 ? (
-        <Empty icon={ClipboardList} title="No meetings recorded">
-          The Secretary or Chairperson can record the first meeting.
-        </Empty>
+      ) : !meetings.length ? (
+        <Empty title="No meetings recorded" />
       ) : (
-        <div className="grid lg:grid-cols-[260px_1fr] gap-5">
+        <div className="grid lg:grid-cols-[250px_1fr] gap-5">
           <Card className="self-start">
             <CardHeader title="Meeting history" />
             <div className="divide-y divide-line">
@@ -304,16 +495,9 @@ export default function GovernancePage() {
                   key={m.meeting_id}
                   onClick={() => {
                     setSelected(m.meeting_id);
-                    setChanges({});
-                    setText("");
-                    setVotes({
-                      votesFor: "",
-                      votesAgainst: "",
-                      abstentions: "",
-                    });
-                    setError("");
+                    resetVote();
                   }}
-                  className={`w-full text-left p-4 space-y-2 ${selected === m.meeting_id ? "bg-accent-50" : ""}`}
+                  className={`w-full p-4 text-left space-y-2 ${selected === m.meeting_id ? "bg-accent-50" : ""}`}
                 >
                   <p className="text-sm font-semibold">{m.meeting_date}</p>
                   <p className="text-sm line-clamp-2">{m.agenda}</p>
@@ -325,11 +509,7 @@ export default function GovernancePage() {
             </div>
           </Card>
           {!selected ? (
-            <Card>
-              <Empty title="Select a meeting">
-                View its minutes, attendance and resolutions.
-              </Empty>
-            </Card>
+            <Empty title="Select a meeting" />
           ) : !detail ? (
             <Loading />
           ) : (
@@ -337,44 +517,50 @@ export default function GovernancePage() {
               <Card>
                 <CardHeader
                   title={`Meeting · ${detail.meeting_date}`}
-                  description={`${detail.attendance_count} of ${detail.eligible_count} members present; ${detail.required_count} required.`}
+                  description={`${detail.attendance_count} of ${detail.eligible_count} active members present; ${detail.required_count} required for quorum.`}
                 />
-                <CardBody>
-                  <h2 className="font-semibold text-sm">Agenda</h2>
-                  <p className="whitespace-pre-wrap text-sm mt-1">
+                <CardBody className="space-y-3">
+                  <p className="text-sm whitespace-pre-wrap">
+                    <strong>Agenda: </strong>
                     {detail.agenda}
                   </p>
-                  <h2 className="font-semibold text-sm mt-4">Minutes</h2>
-                  <p className="whitespace-pre-wrap text-sm mt-1">
+                  <p className="text-sm whitespace-pre-wrap">
+                    <strong>Minutes: </strong>
                     {detail.minutes}
                   </p>
-                  <details className="mt-4 text-sm">
-                    <summary className="cursor-pointer">
-                      Attendance ({detail.attendance.length})
+                  <details>
+                    <summary className="text-sm cursor-pointer">
+                      Recorded attendance and voting rules
                     </summary>
-                    <ul className="mt-2 space-y-1">
+                    <ul className="text-sm mt-2 mb-3">
                       {detail.attendance.map((m) => (
                         <li key={m.member_id}>{m.full_name}</li>
                       ))}
                     </ul>
+                    <PolicySummary policy={detail.voting_policy} />
                   </details>
+                  {!detail.voting_policy && (
+                    <Alert tone="attention">
+                      Historical record from the earlier implementation. It
+                      remains readable; record a new meeting with confirmed
+                      voting rules for further decisions.
+                    </Alert>
+                  )}
                 </CardBody>
               </Card>
               <Card>
                 <CardHeader title="Resolutions" />
-                {detail.resolutions.length === 0 ? (
-                  <Empty title="No resolutions recorded" />
+                {!detail.resolutions.length ? (
+                  <Empty title="No resolutions" />
                 ) : (
-                  <CardBody className="space-y-5">
+                  <CardBody className="space-y-4">
                     {detail.resolutions.map((r) => (
                       <article
                         key={r.resolution_id}
                         className="border border-line rounded p-4 space-y-3"
                       >
-                        <div className="flex flex-wrap justify-between gap-2">
-                          <span className="font-semibold text-sm">
-                            {r.kind}
-                          </span>
+                        <div className="flex flex-wrap gap-2 justify-between">
+                          <strong className="text-sm">{r.kind}</strong>
                           <Badge
                             tone={
                               r.applied_at
@@ -389,45 +575,29 @@ export default function GovernancePage() {
                         </div>
                         <p className="text-sm whitespace-pre-wrap">{r.text}</p>
                         <p className="text-xs text-ink-500">
-                          For: {r.votes_for} · Against: {r.votes_against} ·
-                          Abstained: {r.abstentions} · Required:{" "}
+                          For {r.votes_for} · Against {r.votes_against} ·
+                          Abstained {r.abstentions} · Required{" "}
                           {r.required_votes}
                         </p>
+                        {r.voting_rules?.map((v) => (
+                          <p key={v.name} className="text-xs">
+                            {v.name}: {describeRule(v.rule)}
+                          </p>
+                        ))}
                         {r.kind === "Amendment" && (
-                          <div className="text-sm">
-                            <p>Effective date: {r.payload.effectiveDate}</p>
-                            <dl className="mt-2 space-y-1">
-                              {Object.entries(r.payload.changes).map(
-                                ([k, v]) => (
-                                  <div key={k}>
-                                    <dt className="inline font-medium">
-                                      {fields.find((f) => f[0] === k)?.[1] ||
-                                        k.replace(/([A-Z])/g, " $1")}
-                                      :{" "}
-                                    </dt>
-                                    <dd className="inline">
-                                      {typeof v === "object"
-                                        ? v
-                                            .map(
-                                              (x) =>
-                                                `${x.category}: R${x.amount}`,
-                                            )
-                                            .join(", ")
-                                        : String(v)}
-                                    </dd>
-                                  </div>
-                                ),
-                              )}
-                            </dl>
-                          </div>
-                        )}
+                          <Changes changes={r.payload.changes} />
+                        )}{" "}
                         {r.kind === "Expulsion" && (
                           <p className="text-sm">
                             Member: {r.subject_name || r.payload.memberId}
+                            {r.payload.successorMemberId
+                              ? ` · Replacement: ${r.successor_name || r.payload.successorMemberId}`
+                              : ""}
                           </p>
                         )}
-                        {!r.applied_at &&
+                        {detail.voting_policy &&
                           r.outcome === "Carried" &&
+                          !r.applied_at &&
                           can("governance.apply") && (
                             <Button
                               variant="secondary"
@@ -438,8 +608,8 @@ export default function GovernancePage() {
                             </Button>
                           )}
                         {r.outcome === "Advisory" && (
-                          <p className="text-xs text-ink-500">
-                            Not binding: this meeting did not meet quorum.
+                          <p className="text-xs">
+                            Not binding: the meeting did not meet quorum.
                           </p>
                         )}
                       </article>
@@ -447,234 +617,173 @@ export default function GovernancePage() {
                   </CardBody>
                 )}
               </Card>
-              {can("governance.record") && (
+              {mayRecord && detail.voting_policy && (
                 <Card>
                   <CardHeader
-                    title="Record a resolution"
-                    description="Include every attendee in the vote totals. Abstentions count toward attendance, but not votes in favour."
+                    title="Record the completed vote"
+                    description={`${detail.voter_count} eligible voters were present. Include each voter exactly once in the totals.`}
                   />
                   <CardBody>
-                    <form onSubmit={saveResolution} className="space-y-4">
-                      <Field label="Resolution type" htmlFor="kind">
-                        <Select
-                          id="kind"
-                          value={kind}
-                          onChange={(e) => setKind(e.target.value)}
-                        >
-                          <option>General</option>
-                          {can("constitution.propose") && (
-                            <option>Amendment</option>
-                          )}
-                          <option>Expulsion</option>
-                        </Select>
-                      </Field>
-                      <Field
-                        label="Resolution text and reason"
-                        htmlFor="resolution-text"
-                        required
-                      >
-                        <Textarea
-                          id="resolution-text"
-                          value={text}
-                          onChange={(e) => setText(e.target.value)}
-                          required
-                          maxLength={20000}
-                        />
-                      </Field>
-                      {kind === "Expulsion" && (
-                        <Field
-                          label="Member to expel"
-                          htmlFor="expel-member"
-                          required
-                        >
+                    <form onSubmit={saveVote} className="space-y-4">
+                      <fieldset disabled={busy} className="space-y-4">
+                        <Field label="Resolution type" htmlFor="kind">
                           <Select
-                            id="expel-member"
-                            value={memberId}
-                            onChange={(e) => setMemberId(e.target.value)}
-                            required
+                            id="kind"
+                            value={kind}
+                            onChange={(e) => {
+                              setKind(e.target.value);
+                              resetVote();
+                            }}
                           >
-                            <option value="">Select a member</option>
-                            {candidates?.members.map((m) => (
-                              <option key={m.member_id} value={m.member_id}>
-                                {m.full_name}
-                              </option>
-                            ))}
+                            <option>General</option>
+                            <option>Amendment</option>
+                            <option>Expulsion</option>
                           </Select>
                         </Field>
-                      )}
-                      {kind === "Amendment" && (
-                        <fieldset className="border border-line rounded p-4 space-y-4">
-                          <legend className="text-sm font-semibold px-1">
-                            Proposed constitution changes
-                          </legend>
-                          <p className="text-xs text-ink-500">
-                            Fill only the rules being changed. Constitution
-                            version {detail.constitutionVersion} requires{" "}
-                            {detail.amendmentMajorityPercentage}% of attendees
-                            to vote in favour.
-                          </p>
-                          <Field
-                            label="Effective date"
-                            htmlFor="effective-date"
-                            required
-                          >
-                            <Input
-                              id="effective-date"
-                              type="date"
-                              min={today()}
-                              value={effectiveDate}
-                              onChange={(e) => setEffectiveDate(e.target.value)}
-                              required
-                            />
-                          </Field>
-                          <div className="grid sm:grid-cols-2 gap-3">
-                            {fields.map(([key, label, type]) => (
-                              <Field key={key} label={label} htmlFor={key}>
-                                <Input
-                                  id={key}
-                                  type={type}
-                                  step={key.endsWith("Amount") ? "0.01" : "1"}
-                                  min={
-                                    key === "amendmentMajorityPercentage"
-                                      ? 51
-                                      : 0
-                                  }
-                                  max={
-                                    key.endsWith("Percentage") ? 100 : undefined
-                                  }
-                                  value={changes[key] ?? ""}
-                                  onChange={(e) => update(key, e.target.value)}
-                                />
-                              </Field>
-                            ))}
-                          </div>
-                          <Field label="Cycle frequency" htmlFor="frequency">
-                            <Select
-                              id="frequency"
-                              value={changes.cycleFrequency || ""}
-                              onChange={(e) =>
-                                update("cycleFrequency", e.target.value)
-                              }
-                            >
-                              <option value="">Keep existing</option>
-                              <option>Weekly</option>
-                              <option>Fortnightly</option>
-                              <option>Monthly</option>
-                            </Select>
-                          </Field>
-                          {club?.clubType === "Rotating" && (
-                            <Field label="Payout order" htmlFor="payout-order">
+                        {kind === "Amendment" ? (
+                          <>
+                            <Field label="Pending amendment" htmlFor="pending">
                               <Select
-                                id="payout-order"
-                                value={changes.payoutOrderMethod || ""}
-                                onChange={(e) =>
-                                  update("payoutOrderMethod", e.target.value)
-                                }
+                                id="pending"
+                                value={proposalId}
+                                required
+                                onChange={(e) => setProposalId(e.target.value)}
                               >
-                                <option value="">Keep existing</option>
-                                <option>Random draw</option>
-                                <option>Seniority</option>
-                                <option>Negotiated</option>
+                                <option value="">
+                                  Select a pending proposal
+                                </option>
+                                {proposals
+                                  .filter((p) => p.status === "Pending")
+                                  .map((p) => (
+                                    <option
+                                      key={p.proposal_id}
+                                      value={p.proposal_id}
+                                    >
+                                      {p.text}
+                                    </option>
+                                  ))}
                               </Select>
                             </Field>
-                          )}
-                          {club?.clubType === "Burial" && (
-                            <>
-                              <Field
-                                label="Waiting period (days)"
-                                htmlFor="waiting"
-                              >
-                                <Input
-                                  id="waiting"
-                                  type="number"
-                                  min="0"
-                                  value={changes.waitingPeriodDays ?? ""}
-                                  onChange={(e) =>
-                                    update("waitingPeriodDays", e.target.value)
-                                  }
-                                />
-                              </Field>
-                              <Field
-                                label="Benefit schedule"
-                                htmlFor="benefits"
-                                hint="One category and amount per line, e.g. Spouse: 10000. Enter the complete replacement schedule."
-                              >
-                                <Textarea
-                                  id="benefits"
-                                  value={changes.benefitSchedule || ""}
-                                  onChange={(e) =>
-                                    update("benefitSchedule", e.target.value)
-                                  }
-                                />
-                              </Field>
-                            </>
-                          )}
-                          {club?.clubType === "Accumulating" && (
-                            <div className="grid grid-cols-2 gap-3">
-                              {[
-                                ["yearEndMonth", "Year-end month", 12],
-                                ["yearEndDay", "Year-end day", 31],
-                              ].map(([key, label, max]) => (
-                                <Field key={key} label={label} htmlFor={key}>
-                                  <Input
-                                    id={key}
-                                    type="number"
-                                    min="1"
-                                    max={max}
-                                    value={changes[key] ?? ""}
-                                    onChange={(e) =>
-                                      update(key, e.target.value)
-                                    }
-                                  />
-                                </Field>
-                              ))}
-                            </div>
-                          )}
-                        </fieldset>
-                      )}
-                      <div className="grid grid-cols-3 gap-3">
-                        {[
-                          ["votesFor", "In favour"],
-                          ["votesAgainst", "Against"],
-                          ["abstentions", "Abstaining"],
-                        ].map(([key, label]) => (
-                          <Field key={key} label={label} htmlFor={key} required>
-                            <Input
-                              id={key}
-                              type="number"
-                              min="0"
-                              max={attendanceCount}
-                              step="1"
-                              value={votes[key]}
+                            {chosenProposal && (
+                              <div className="p-3 border border-line rounded">
+                                <p className="text-sm mb-2">
+                                  Exact proposal to be voted on · effective{" "}
+                                  {chosenProposal.effective_date}
+                                </p>
+                                <Changes changes={chosenProposal.changes} />
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <Field
+                            label="Resolution text and reason"
+                            htmlFor="resolution-text"
+                          >
+                            <Textarea
+                              id="resolution-text"
                               required
-                              onChange={(e) =>
-                                setVotes((v) => ({
-                                  ...v,
-                                  [key]: e.target.value,
-                                }))
-                              }
+                              maxLength={20000}
+                              value={text}
+                              onChange={(e) => setText(e.target.value)}
                             />
                           </Field>
-                        ))}
-                      </div>
-                      <p className="text-sm">
-                        {voteTotal} of {attendanceCount} attendees accounted
-                        for.
-                      </p>
-                      {!detail.quorate && (
-                        <Alert tone="attention">
-                          This resolution will be advisory because the meeting
-                          did not meet quorum.
-                        </Alert>
-                      )}
-                      <Button
-                        variant="secondary"
-                        type="submit"
-                        loading={busy}
-                        disabled={voteTotal !== attendanceCount}
-                      >
-                        Record resolution
-                      </Button>
+                        )}
+                        {kind === "Expulsion" && (
+                          <>
+                            <Field label="Member to expel" htmlFor="member">
+                              <Select
+                                id="member"
+                                required
+                                value={memberId}
+                                onChange={(e) => {
+                                  setMemberId(e.target.value);
+                                  setSuccessor("");
+                                }}
+                              >
+                                <option value="">Select member</option>
+                                {people.map((m) => (
+                                  <option key={m.member_id} value={m.member_id}>
+                                    {m.full_name} · {m.role}
+                                  </option>
+                                ))}
+                              </Select>
+                            </Field>
+                            {subject && subject.role !== "Member" && (
+                              <Field
+                                label={`Replacement ${subject.role} named in this resolution`}
+                                htmlFor="successor"
+                                hint="Required when removing the last Chairperson or Treasurer. The voted replacement is appointed atomically when the resolution is applied."
+                              >
+                                <Select
+                                  id="successor"
+                                  value={successor}
+                                  onChange={(e) => setSuccessor(e.target.value)}
+                                >
+                                  <option value="">No replacement</option>
+                                  {people
+                                    .filter(
+                                      (m) =>
+                                        m.role === "Member" &&
+                                        m.standing === "Good standing" &&
+                                        m.member_id !== memberId,
+                                    )
+                                    .map((m) => (
+                                      <option
+                                        key={m.member_id}
+                                        value={m.member_id}
+                                      >
+                                        {m.full_name}
+                                      </option>
+                                    ))}
+                                </Select>
+                              </Field>
+                            )}
+                          </>
+                        )}
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            ["votesFor", "In favour"],
+                            ["votesAgainst", "Against"],
+                            ["abstentions", "Abstaining"],
+                          ].map(([key, label]) => (
+                            <Field key={key} label={label} htmlFor={key}>
+                              <Input
+                                id={key}
+                                required
+                                type="number"
+                                step="1"
+                                min="0"
+                                max={detail.voter_count}
+                                value={votes[key]}
+                                onChange={(e) =>
+                                  setVotes((v) => ({
+                                    ...v,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                          ))}
+                        </div>
+                        <p className="text-sm">
+                          {totalVotes} of {detail.voter_count} eligible voters
+                          accounted for.
+                        </p>
+                        {!detail.quorate && (
+                          <Alert tone="attention">
+                            Any resolution recorded here will be advisory and
+                            cannot be applied.
+                          </Alert>
+                        )}
+                        <Button
+                          variant="secondary"
+                          type="submit"
+                          loading={busy}
+                          disabled={totalVotes !== detail.voter_count}
+                        >
+                          Record vote
+                        </Button>
+                      </fieldset>
                     </form>
                   </CardBody>
                 </Card>
@@ -685,12 +794,12 @@ export default function GovernancePage() {
       )}
       {confirm && (
         <ConfirmDialog
-          title="Give effect to this resolution?"
+          title="Give effect to the carried resolution?"
           description={
             confirm.kind === "Expulsion"
-              ? "This ends the membership and removes the member from the payout queue. Their financial history is retained."
+              ? "This ends the membership, closes its queue position and appoints any replacement named in the vote. Records are retained."
               : confirm.kind === "Amendment"
-                ? "This creates a new constitution version with exactly the changes recorded in the vote."
+                ? "This creates a constitution version with exactly the changes and date approved by members."
                 : "This records that the carried decision has been put into effect."
           }
           requireReason={false}
@@ -698,8 +807,8 @@ export default function GovernancePage() {
           onClose={() => setConfirm(null)}
           onConfirm={async () => {
             await governance.apply(confirm.resolution_id);
-            setDetail(await governance.get(selected));
-            setNotice("Resolution given effect.");
+            setRefreshKey((k) => k + 1);
+            setNotice("Resolution applied.");
           }}
         />
       )}

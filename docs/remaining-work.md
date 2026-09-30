@@ -22,10 +22,10 @@ Every requirement below was checked against the actual code, not just against
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
-Tests: 252 automated tests pass under `TZ=Africa/Johannesburg` (the existing
-grace-boundary fixture still assumes local SA time), plus `npm run test:governance`
+Tests: 254 automated tests pass with timezone-independent calendar rules,
+plus `npm run test:governance`
 for isolated database/HTTP checks. Imports resolve
-(`npm run check`). Next free migration number: **017** (016 is governance).
+(`npm run check`). Next free migration number: **018** (016 and 017 are governance).
 
 ## 2. How to work on any task
 
@@ -64,13 +64,13 @@ can re-run them and a marker cannot see the evidence. Move them into
 runs them. They are not repeatable on a used database, so the runner must rebuild
 first.
 
-**T2. Fix known defects.** (S)
-- `iso()` in `contributions.service.js` turns 2024-11-20 into 2024-11-19 on a server
-  in South African time, and it decides which constitution version a penalty uses
-  (decision 19). Use `lib/dates.js` and select dates `::text`.
-- REQ-33: the code picks the constitution version by each cycle's due date, but the
-  SRS says the first cycle that commences after the effective date.
-- Documentation numbering, see section 6.
+**T2. Known defects — date/cycle items completed in migration 017.**
+Calendar dates are selected as text, input dates are validated, and South African
+calendar-day rules no longer depend on the host timezone. New cycles select the
+constitution by commencement under REQ-33 and permanently pin that version.
+Pre-existing cycles keep their former due-date selection; no historic money is
+rewritten. Decisions 38 and the integration checks record this migration boundary.
+Documentation numbering cleanup unrelated to governance remains separate work.
 
 **T3. Screens for backends that already exist.** (M)
 - Upload, view and remove proof of payment on the contributions page
@@ -95,15 +95,16 @@ the bank balance. Any non-zero difference is shown as an exception and cannot be
 dismissed without an explanation. Existing: `reconciliation` table with one seeded
 unexplained difference. Needs: repo, service, routes, one page, tests.
 
-**T5. UC7 Governance — implemented 29 September 2026.**
-Migration 016, three-file governance module, pure rules and `/governance` screen.
-Includes meeting records, attendance, quorum, immutable resolutions, advisory
-refusal, Chairperson application, atomic constitution versioning and expulsion
-with queue removal and last-officer protection. Decision 36 records the initial
-unanimity threshold, voting denominator and historical-membership limitations.
-Run `npm run test:governance` for isolated database and HTTP evidence. The shared
-database still needs the normal `npm run migrate`; no shared data was changed.
-T7 remains separate. This does not complete the defaulter pipeline.
+**T5. UC7 Governance — completed follow-on, migrations 016 and 017.**
+Includes recorded constitutional voting rules (no assumed majority), exact fractions,
+class-specific amendment thresholds and voting rights; pending proposals; attendance,
+quorum and immutable vote outcomes; atomic version creation; voted officer succession
+and expulsion with queue removal. Membership history is recorded from migration 017
+forward. Old unconfirmed votes remain readable but cannot be newly applied.
+`/governance` also includes the annual report in REQ-110. Actual adopted voting rules
+must be supplied by the club; the documents do not provide numerical thresholds.
+See decisions 37–39 and `npm run test:governance`. T7/T10 and reconciliation capture
+remain separately assigned. No shared database has been migrated here.
 
 **T6. Reversing entries - REQ-91, 92.** (M)
 The permission `ledger.reverse` exists but there is no route. Treasurer posts a reversing
@@ -154,10 +155,12 @@ old one; no replies. Sending to channels (REQ-132) depends on T10.
 ### 4.4 Reporting and screens
 
 **T12. Dashboards and annual report - REQ-110 to 118.** (L)
+REQ-110 annual report is now implemented on Governance (decision 39).
+The role-specific dashboards and chart/drill-through work remain.
 Today there is one generic dashboard for every role. The SRS wants separate Member,
 Treasurer, Chairperson and Platform Administrator dashboards, a 12-month income and
 expenditure series, exceptions highlighted, every figure drawn from the same query as
-its detail view, and drill-through. REQ-110 is the annual report.
+its detail view, and drill-through. REQ-110 is covered by the governance report.
 
 **T13. Batch capture - REQ-58.** (S)
 Treasurer captures contributions for several members in one operation with a running
@@ -172,6 +175,12 @@ provider credentials, lowest priority.)
 ### 4.5 Already assigned
 
 **Assistant - REQ-119 to 128.** Another group member.
+
+Also assigned to other members and excluded from this governance update:
+REQ-3 (federated sign-in), REQ-11 (password re-entry), REQ-58 (batch capture),
+REQ-100 (export), REQ-101–103 (defaulter pipeline), notifications and
+Reconciliation (Use Case 5). The annual governance report only reads existing
+reconciliation records; it does not implement reconciliation capture.
 
 ## 5. Decisions the group must make first (changes to the SRS)
 
@@ -221,8 +230,8 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 
 ## 7. Suggested order if time is short
 
-1. T2 and T3 (an hour or two each, and they finish work already claimed as done).
-2. T4 Reconciliation remains. T5 Governance is implemented; apply migration 016
+1. T3 and the remaining documentation numbering cleanup (T2 date/cycle fixes are done).
+2. T4 Reconciliation remains. T5 Governance is implemented; apply migrations 016 and 017
    and run the governance demo checks.
 3. T7 Standing engine, then T8 Exit processing.
 4. T6, T13, T12 as time allows.

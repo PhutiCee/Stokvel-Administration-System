@@ -29,18 +29,31 @@ async function constitutionInForceOn(db, date = null) {
         );
 }
 
+// REQ-33: amendments govern cycles commencing strictly AFTER their effective date.
+async function constitutionForStart(db,date) {
+    return db.one(`SELECT * FROM constitution WHERE club_id=$1
+        AND (effective_date<$2::date OR (version=1 AND effective_date<=$2::date))
+        ORDER BY version DESC LIMIT 1`,[db.clubId,date]);
+}
+async function constitutionForCycle(db,cycleId) {
+    return db.one(`SELECT k.* FROM constitution k JOIN cycle c
+        ON c.club_id=k.club_id AND c.constitution_id=k.constitution_id
+        WHERE c.club_id=$1 AND c.cycle_id=$2`,[db.clubId,cycleId]);
+}
+async function lockClub(db) {return db.one('SELECT club_id FROM club WHERE club_id=$1 FOR UPDATE',[db.clubId]);}
+
 // --- cycles ----------------------------------------------------------------
 
 async function openCycleFor(db) {
     return db.one(
-        `SELECT * FROM cycle WHERE club_id = $1 AND status = 'Open' LIMIT 1`,
+        `SELECT *, start_date::text, due_date::text FROM cycle WHERE club_id = $1 AND status = 'Open' LIMIT 1`,
         [db.clubId]
     );
 }
 
 async function getCycle(db, cycleId) {
     return db.one(
-        "SELECT * FROM cycle WHERE club_id = $1 AND cycle_id = $2",
+        "SELECT *, start_date::text, due_date::text FROM cycle WHERE club_id = $1 AND cycle_id = $2",
         [db.clubId, cycleId]
     );
 }
@@ -58,7 +71,7 @@ async function createCycle(tx, { sequenceNumber, startDate, dueDate, openedBy })
     return tx.one(
         `INSERT INTO cycle (club_id, sequence_number, start_date, due_date, opened_by)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
+         RETURNING *, start_date::text, due_date::text`,
         [tx.clubId, sequenceNumber, startDate, dueDate, openedBy]
     );
 }
@@ -83,7 +96,7 @@ async function membersForNewCycle(db) {
 
 async function listCycles(db, limit = 24) {
     return db.many(
-        `SELECT c.*,
+        `SELECT c.*, c.start_date::text, c.due_date::text,
                 count(ct.*)::int AS member_count,
                 COALESCE(sum(ct.expected_amount), 0) AS expected_total,
                 COALESCE(sum(ct.captured_amount), 0) AS captured_total
@@ -123,7 +136,7 @@ async function listForCycle(db, cycleId) {
 
 async function getContribution(db, contributionId) {
     return db.one(
-        `SELECT ct.*, u.full_name, c.status AS cycle_status, c.due_date,
+        `SELECT ct.*, u.full_name, c.status AS cycle_status, c.due_date::text, c.start_date::text,
                 c.sequence_number, m.standing
            FROM contribution ct
            JOIN cycle c        ON c.cycle_id = ct.cycle_id AND c.club_id = ct.club_id
@@ -164,7 +177,7 @@ async function setStatus(tx, contributionId, status) {
 async function priorOutstanding(tx, memberId, excludeContributionId) {
     return tx.many(
         `SELECT ct.contribution_id, ct.expected_amount, ct.captured_amount,
-                c.sequence_number, c.due_date
+                c.sequence_number, c.due_date::text, c.start_date::text, c.cycle_id
            FROM contribution ct
            JOIN cycle c ON c.cycle_id = ct.cycle_id AND c.club_id = ct.club_id
           WHERE ct.club_id = $1
@@ -327,7 +340,7 @@ async function getMemberCredit(tx, memberId) {
 
 module.exports = {
     forClub,
-    constitutionInForceOn,
+    constitutionInForceOn, constitutionForStart, constitutionForCycle, lockClub,
     openCycleFor, getCycle, nextSequenceNumber, createCycle, membersForNewCycle, listCycles,
     insertExpected, listForCycle, getContribution, applyCapture, setStatus, priorOutstanding,
     unsettledPenalties, settlePenalty, levyPenalty,

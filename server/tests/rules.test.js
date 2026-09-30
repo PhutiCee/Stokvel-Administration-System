@@ -151,11 +151,11 @@ test("contribution status — REQ-54, REQ-55", async (t) => {
     await t.test("REQ-55: grace runs to the END of its last day", () => {
         // Due 7 Sep + 5 days of grace. The 12th is still inside.
         assert.equal(resolveStatus({
-            expected: "500.00", captured: "0", dueDate: due, graceDays: 5, asAt: at("2026-09-12T23:00:00")
+            expected: "500.00", captured: "0", dueDate: due, graceDays: 5, asAt: at("2026-09-12T23:00:00+02:00")
         }), "Outstanding");
         // The 13th is not.
         assert.equal(resolveStatus({
-            expected: "500.00", captured: "0", dueDate: due, graceDays: 5, asAt: at("2026-09-13T06:00:00")
+            expected: "500.00", captured: "0", dueDate: due, graceDays: 5, asAt: at("2026-09-13T06:00:00+02:00")
         }), "Late");
     });
 

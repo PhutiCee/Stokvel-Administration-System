@@ -245,24 +245,36 @@ that line, which can be long after startup.
 
 ## Governance (Use Case 7)
 
-After pulling this change, run `npm install` and `npm run migrate` to apply
-**016_governance.sql**, then start the web and API processes as usual. Migration
-016 adds tables and a constitutional majority field; it does not reseed or erase
-club data. Reserve the next migration number (017) for subsequent work.
+This implementation uses migrations **016_governance.sql** and
+**017_governance_completion.sql**. Keep 016 unchanged if it has already run; the
+follow-on update is 017. Install dependencies and apply outstanding migrations
+with the normal `npm install` / `npm run migrate`. Do not reseed or rebuild.
 
-Open **Governance** in the club navigation. A Secretary or Chairperson records
-a completed meeting's date, agenda, attendance and minutes. Quorum is calculated
-and saved. Record resolution text and votes accounting for everyone present.
-Only a Chairperson can propose an amendment or give a carried resolution effect.
-Members can read the records. Meetings without quorum produce advisory decisions
-which cannot be applied. The defaulter pipeline remains a separate task.
+On **Governance**, the Chairperson first records the club's already adopted voting
+rules with their source clause and effective date. No 100% or simple-majority
+threshold is assumed. Record the General/Expulsion rules, amendment classes,
+fractions, denominators and voting rights exactly as the constitution specifies.
+This one-time capture is not authority to change a constitution. Subsequent voting
+rule changes require a member resolution under the existing rules.
 
-Existing constitutions initially require **100% of attendees** in favour of an
-amendment because no threshold was specified before. This configurable field can
-only be changed by a valid resolution under the existing threshold. See decision
-36 in `Docs/Desicions.md` for the voting and historical-membership assumptions.
+The Chairperson submits a pending amendment proposal. A Secretary or Chairperson
+records the completed meeting and votes on that exact proposal. Advisory votes
+cannot take effect. A carried resolution is applied once by the Chairperson.
+Expulsion resolutions can name an eligible replacement officer, transferred in
+the same transaction so the club retains its required officers.
 
-Run `npm run test:governance` for migration, service and HTTP integration checks
-using a disposable PostgreSQL engine in memory. No Supabase credentials or database
-reset is required. `npm test` covers the pure rules; its pre-existing grace-period
-fixture assumes the Africa/Johannesburg timezone.
+The governance page also provides the read-only annual financial/membership report
+for officers. It labels year-to-date periods, unverified membership dates, missing
+or stale reconciliation and non-zero differences. It does not capture reconciliation
+or advance default stages; those tasks remain separately assigned.
+
+New contribution cycles pin the constitution selected by commencement (REQ-33).
+Pre-existing cycles preserve the earlier lookup without rewriting money. Membership
+history starts at migration 017: earlier eligibility cannot be guessed. Legacy
+meetings remain readable, but old unconfirmed votes cannot be newly applied.
+See decisions 37–39 in `Docs/Desicions.md` for these upgrade boundaries.
+
+`npm run test:governance` runs an isolated PostgreSQL upgrade/service/HTTP test,
+including legacy data preservation, proposals, threshold enforcement, atomic
+succession, pinned cycle versions and annual reports. It needs no Supabase
+credentials and does not reset shared data. `npm test` runs 254 unit tests.

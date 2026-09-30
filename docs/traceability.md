@@ -210,11 +210,14 @@ cannot be removed at all once a live claim exists against them
 | REQ-106 | Quorum from attendance and constitution | Frozen eligible count, required count, outcome and version | Unit: rounding/boundary; integration: snapshot |
 | REQ-107 | Non-quorate decisions are advisory and never applied | Rules and database outcome guard | Unit and integration refusals |
 | REQ-108 | Resolution text, for/against/abstaining votes and outcome | Immutable `resolution` row; totals equal attendance | Unit: invalid/tied/abstaining votes; database immutability |
-| REQ-109 | Constitutional majority before amendment takes effect | Versioned percentage, exact voted payload, atomic application | Integration: quorum/majority, stale vote, rollback; decision 36 explains initial unanimity |
+| REQ-109 | Constitutional majority before amendment takes effect | Recorded class-specific voting rules, pending proposal, exact voted payload, atomic application | Integration: confirmed policy, proposal permissions, stale vote and rollback; decisions 37–38 supersede the initial assumptions |
+| REQ-110 | Annual financial and membership report | `governance.annualReport`, `AnnualReport.js` | Integration: SA year boundaries, reversal netting, membership movement, reconciliation and tenancy |
 
-The defaulter pipeline (REQ-101–103) remains separate work. Existing T2 cycle
-version-selection issues remain outstanding. No shared database was migrated
-as part of development verification.
+The defaulter pipeline (REQ-101–103) and notifications remain separately assigned.
+REQ-33 is enforced on new cycles using immutable version pins selected at
+commencement. Legacy cycles retain the previous due-date selection at migration;
+no historical money is rewritten (decision 38). Old assumed-majority votes are
+readable but cannot be newly applied. No shared database was migrated for testing.
 
 ---
 
@@ -231,12 +234,12 @@ governance change.
 
 
 
-**Defaulter pipeline** — REQ-101 to REQ-103.
+**Defaulter pipeline** — REQ-101 to REQ-103; assigned to another group member.
 
 **Notifications** — REQ-61, REQ-62, and the REQ-6 lockout notice. Nothing is
 despatched yet; the lockout is recorded in the audit log instead.
 
-**Also outstanding:** REQ-3 (federated sign-in), REQ-11 (password re-entry for
+**Assigned to other group members (excluded from this update):** REQ-3 (federated sign-in), REQ-11 (password re-entry for
 sensitive operations), REQ-58 (batch capture),
 REQ-100 (export).
 
@@ -245,7 +248,7 @@ REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 252 automated tests; existing grace-boundary test assumes SA timezone
+npm test     # 254 automated tests, timezone-independent calendar rules
 npm run test:governance  # isolated PostgreSQL engine, no external database
 npm run check  # every relative import resolves
 ```

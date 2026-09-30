@@ -22,7 +22,8 @@ const {
 const { assessWaiver } = require("../../rules/penalties");
 const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
 
-const iso = (d) => new Date(d).toISOString().slice(0, 10);
+const { assertIsoDate, todayIso, addDays } = require('../../lib/dates');
+function inputDate(value,label) {try{return assertIsoDate(value,label);}catch(err){throw new BadRequest(err.message);}}
 
 // ---------------------------------------------------------------------------
 // openCycle() + generateExpectedContributions()
@@ -40,27 +41,17 @@ const iso = (d) => new Date(d).toISOString().slice(0, 10);
  * database can settle it.
  */
 async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
-    const constitution = await repo.constitutionInForceOn(db);
-    if (!constitution) {
-        throw new RuleRefusal("This club has no constitution on record, so a cycle cannot be opened.");
-    }
-
-    const existing = await repo.openCycleFor(db);
-    if (existing) {
-        throw new Conflict(
-            `Cycle ${existing.sequence_number} is still open. Close it before opening another.`,
-            { cycleId: existing.cycle_id, sequenceNumber: existing.sequence_number }
-        );
-    }
-
-    const start = startDate ? iso(startDate) : iso(new Date());
-    const due = dueDate ? iso(dueDate) : iso(new Date(new Date(start).getTime() + 7 * 86400000));
-
-    if (new Date(due) < new Date(start)) {
-        throw new BadRequest("The due date cannot fall before the cycle starts.");
-    }
-
-    const members = await repo.membersForNewCycle(db);
+    const start = startDate ? inputDate(startDate,'Cycle start') : todayIso();
+    if (start > todayIso()) throw new RuleRefusal('A cycle cannot be opened before its commencement date.');
+    const due = dueDate ? inputDate(dueDate,'Due date') : addDays(start,7);
+    if (due < start) throw new BadRequest('The due date cannot fall before the cycle starts.');
+    const result = await withClubTransaction(db.clubId, async (tx) => {
+        await repo.lockClub(tx);
+        const constitution = await repo.constitutionForStart(tx,start);
+        if (!constitution) throw new RuleRefusal('No constitution applies to this cycle commencement date.');
+        const existing = await repo.openCycleFor(tx);
+        if (existing) throw new Conflict(`Cycle ${existing.sequence_number} is still open. Close it first.`);
+    const members = await repo.membersForNewCycle(tx);
     if (members.length === 0) {
         throw new RuleRefusal(
             "No member of this club is in good standing, so there is nobody to bill. " +
@@ -69,9 +60,8 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
     }
 
     const contributionCents = toCents(constitution.contribution_amount);
-    const sequenceNumber = await repo.nextSequenceNumber(db);
+    const sequenceNumber = await repo.nextSequenceNumber(tx);
 
-    const result = await withClubTransaction(db.clubId, async (tx) => {
         const cycle = await repo.createCycle(tx, {
             sequenceNumber, startDate: start, dueDate: due, openedBy: actor.userId
         });
@@ -113,13 +103,13 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
             billedCents += expectedCents;
         }
 
-        return { cycle, billedCents, creditsApplied };
+        return { cycle, billedCents, creditsApplied, sequenceNumber, memberCount:members.length };
     });
 
     await audit("cycle.open", "Success", {
         detail:
-            `${actor.fullName} opened cycle ${sequenceNumber} (${start} to ${due}), ` +
-            `billing ${members.length} member(s) ${format(result.billedCents)}` +
+            `${actor.fullName} opened cycle ${result.sequenceNumber} (${start} to ${due}), ` +
+            `billing ${result.memberCount} member(s) ${format(result.billedCents)}` +
             (result.creditsApplied ? `, after ${format(result.creditsApplied)} of credits` : ""),
         targetType: "cycle",
         targetId: result.cycle.cycle_id
@@ -127,10 +117,10 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
 
     return {
         cycleId: result.cycle.cycle_id,
-        sequenceNumber,
+        sequenceNumber:result.sequenceNumber,
         startDate: start,
         dueDate: due,
-        memberCount: members.length,
+        memberCount: result.memberCount,
         expectedTotal: toNumeric(result.billedCents),
         creditsApplied: toNumeric(result.creditsApplied)
     };
@@ -203,7 +193,7 @@ async function applyExcess(tx, { memberId, excessCents, excludeContributionId })
 
             // The status of that older cycle has changed, so it is recomputed
             // rather than left stale (REQ-54).
-            const constitution = await repo.constitutionInForceOn(tx, iso(c.due_date));
+            const constitution = await repo.constitutionForCycle(tx, c.cycle_id);
             const status = resolveStatus({
                 expected: c.expected_amount,
                 captured: toNumeric(newCapturedCents),
@@ -264,7 +254,7 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
         );
     }
 
-    const constitution = await repo.constitutionInForceOn(db, iso(existing.due_date));
+    const constitution = await repo.constitutionForCycle(db, existing.cycle_id);
     const graceDays = constitution?.grace_period_days || 0;
     const penaltyCents = toCents(constitution?.penalty_amount || 0);
 
@@ -277,7 +267,7 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
     const appliedCents = Math.min(amountCents, shortfallCents);
     const excessCents = amountCents - appliedCents;
 
-    const receiptDate = input.receiptDate ? iso(input.receiptDate) : iso(new Date());
+    const receiptDate = input.receiptDate ? inputDate(input.receiptDate,'Receipt date') : todayIso();
 
     // REQ-56 attaches the penalty to HAVING BEEN late, so it is decided from the
     // member's position BEFORE this payment, not after it.
@@ -419,7 +409,7 @@ async function getCycleDetail(db, cycleId) {
 
     if (!cycle) return null;
 
-    const constitution = await repo.constitutionInForceOn(db, iso(cycle.due_date));
+    const constitution = await repo.constitutionForCycle(db, cycle.cycle_id);
     const graceDays = constitution?.grace_period_days || 0;
     const rows = await repo.listForCycle(db, cycle.cycle_id);
 
@@ -430,7 +420,7 @@ async function getCycleDetail(db, cycleId) {
             startDate: cycle.start_date,
             dueDate: cycle.due_date,
             status: cycle.status,
-            lateFrom: iso(lateFrom(cycle.due_date, graceDays)),
+            lateFrom: addDays(cycle.due_date, Number(graceDays) + 1),
             gracePeriodDays: graceDays,
             penaltyAmount: constitution?.penalty_amount || "0.00"
         },

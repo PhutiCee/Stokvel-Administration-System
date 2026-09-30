@@ -73,7 +73,7 @@ async function getVersionInForceOn(db, date = null) {
  * @param {string} args.effectiveDate  YYYY-MM-DD, today or later
  * @param {string} args.amendmentNote  why
  */
-async function createNewVersion(db, { changes, effectiveDate, amendmentNote }, { actor, audit, transaction = null }) {
+async function createNewVersion(db, { changes, effectiveDate, amendmentNote, inheritedGovernancePolicy = null }, { actor, audit, transaction = null }) {
     const today = todayIso();
 
     const run = async (tx) => {
@@ -108,6 +108,7 @@ async function createNewVersion(db, { changes, effectiveDate, amendmentNote }, {
             gracePeriodDays: Number(m.gracePeriodDays ?? 0),
             quorumPercentage: Number(m.quorumPercentage),
             amendmentMajorityPercentage: Number(m.amendmentMajorityPercentage ?? 100),
+            governancePolicy: m.governancePolicy ?? inheritedGovernancePolicy,
             exitNoticeDays: Number(m.exitNoticeDays ?? 0),
             payoutOrderMethod: m.payoutOrderMethod,
             forfeitureRule: m.forfeitureRule?.trim?.() || null,

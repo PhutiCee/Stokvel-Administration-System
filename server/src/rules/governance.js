@@ -35,31 +35,6 @@ function meeting(input, eligibleIds, constitution, today) {
         quorate: ids.length >= required,
     };
 }
-function resolution(input, meeting, majority = 100) {
-    if (!["General", "Amendment", "Expulsion"].includes(input.kind))
-        throw new BadRequest("Choose a resolution type.");
-    const votes = [input.votesFor, input.votesAgainst, input.abstentions];
-    if (
-        votes.some((n) => !Number.isSafeInteger(n) || n < 0) ||
-        votes.reduce((a, b) => a + b, 0) !== meeting.attendance_count
-    )
-        throw new BadRequest(
-            "Whole-number votes must account for everyone present, including abstentions.",
-        );
-    const required =
-        input.kind === "Amendment"
-            ? Math.ceil((meeting.attendance_count * majority) / 100)
-            : Math.floor(meeting.attendance_count / 2) + 1;
-    return {
-        text: text(input.text, "Resolution text"),
-        outcome: !meeting.quorate
-            ? "Advisory"
-            : input.votesFor > 0 && input.votesFor >= required
-              ? "Carried"
-              : "Rejected",
-        required,
-    };
-}
 function assertEffectable(row) {
     if (row.applied_at)
         throw new RuleRefusal("This resolution has already been given effect.");
@@ -68,4 +43,4 @@ function assertEffectable(row) {
             "Only a carried resolution from a quorate meeting can be given effect. Advisory and rejected resolutions cannot be applied.",
         );
 }
-module.exports = { text, meeting, resolution, assertEffectable };
+module.exports = { text, meeting, assertEffectable };

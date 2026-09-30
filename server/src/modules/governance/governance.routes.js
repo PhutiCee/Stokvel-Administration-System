@@ -7,6 +7,48 @@ const { asyncRoute } = require("../../middleware/errors");
 const ctx = (req) => ({ actor: req.actor, audit: req.audit });
 router.use(requireClubContext);
 router.get(
+    "/annual-report",
+    authorize("view.ledger"),
+    asyncRoute(async (req, res) =>
+        res.json(await service.annualReport(req.db, req.query.year)),
+    ),
+);
+router.get(
+    "/settings",
+    authorize("view.governance"),
+    asyncRoute(async (req, res) => res.json(await service.settings(req.db))),
+);
+router.post(
+    "/settings",
+    authorize("constitution.propose"),
+    asyncRoute(async (req, res) =>
+        res
+            .status(201)
+            .json(await service.recordPolicy(req.db, req.body || {}, ctx(req))),
+    ),
+);
+router.get(
+    "/proposals",
+    authorize("view.governance"),
+    asyncRoute(async (req, res) => res.json(await service.proposals(req.db))),
+);
+router.post(
+    "/proposals",
+    authorize("constitution.propose"),
+    asyncRoute(async (req, res) =>
+        res
+            .status(201)
+            .json(
+                await service.proposeAmendment(
+                    req.db,
+                    req.body || {},
+                    ctx(req),
+                ),
+            ),
+    ),
+);
+
+router.get(
     "/",
     authorize("view.governance"),
     asyncRoute(async (req, res) => res.json(await service.list(req.db))),
