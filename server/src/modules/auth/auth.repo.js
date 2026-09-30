@@ -164,7 +164,7 @@ async function listMemberships(userId) {
            FROM member m
            JOIN club c ON c.club_id = m.club_id
           WHERE m.user_id = $1
-            AND m.standing <> 'Exited'
+            AND m.standing NOT IN ('Exited', 'Expelled')
           ORDER BY c.name`,
         [userId]
     );
@@ -188,7 +188,7 @@ async function setActiveClub(sessionId, userId, clubId) {
                 SELECT 1 FROM member m
                  WHERE m.user_id = $2
                    AND m.club_id = $3
-                   AND m.standing <> 'Exited'
+                   AND m.standing NOT IN ('Exited', 'Expelled')
             )
       RETURNING s.session_id, s.active_club_id`,
         [sessionId, userId, clubId]

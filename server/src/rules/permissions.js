@@ -16,14 +16,14 @@
 
 const MATRIX = {
     Member: [
-        "view.dashboard", "view.ownStatement", "view.queue",
+        "view.governance", "view.dashboard", "view.ownStatement", "view.queue",
         "view.constitution", "view.pool", "claim.lodge", "assistant.ask",
         "queue.requestSwap", "queue.consentSwap",
         // REQ-37. A member records and can end cover for their own dependants.
         "dependant.manage"
     ],
     Treasurer: [
-        "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
+        "view.governance", "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.ledger", "view.members", "view.reconciliation",
         "cycle.open", "cycle.close",
         "contribution.capture",
@@ -42,7 +42,7 @@ const MATRIX = {
         "claim.view", "claim.initiate", "claim.cancel", "dependant.manage"
     ],
     Secretary: [
-        "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
+        "view.governance", "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.members", "view.ledger",
         "member.register", "member.amend", "member.revealId", "member.assignRole",
         "governance.record", "assistant.ask",
@@ -50,7 +50,7 @@ const MATRIX = {
         "distribution.view", "claim.view", "dependant.manage"
     ],
     Chairperson: [
-        "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
+        "view.governance", "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
         "view.pool", "view.ledger", "view.members", "view.reconciliation",
         "payout.view", "payout.approve", "payout.assess", "penalty.waive",
         // REQ-82. The Chairperson approves a year-end distribution the same
@@ -70,7 +70,7 @@ const MATRIX = {
         // the Secretary alone, which was a defect against the requirement.
         "member.register", "member.amend", "member.assignRole",
         "member.exitApprove",
-        "governance.record", "constitution.propose",
+        "governance.record", "governance.apply", "constitution.propose",
         "assistant.ask"
     ],
 

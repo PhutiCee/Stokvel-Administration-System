@@ -1,9 +1,9 @@
 # Remaining work - Stokvel Administration System (Group 5, SCSC082)
 
 Written 28 September 2026, from the SRS, `docs/traceability.md` and the code as it
-stands. Code freeze is 29 September and the portfolio is due 1 October. The final
-presentation needs "all 7 use cases demonstrable live", so use cases 5 and 7 are the
-biggest gaps.
+stands. Code freeze is 29 September and the portfolio is due 1 October. Updated after
+the governance implementation on 29 September: UC5 remains the missing use case;
+UC7 is implemented below. Other members retain their existing assignments.
 
 Every requirement below was checked against the actual code, not just against
 `traceability.md`, which turned out to be incomplete (see section 6).
@@ -17,13 +17,15 @@ Every requirement below was checked against the actual code, not just against
 | UC3 Payouts (rotation, distribution) and the rotating queue | Built, backend and web pages |
 | UC4 Burial claims and dependants | Built, backend and web pages |
 | UC5 Reconciliation | **Not built** (table exists with one seeded row) |
-| UC6 Assistant | Assigned to another member |
-| UC7 Governance | **Not built** (no tables) |
+| UC6 Assistant | Implementation added on `racha`; owned by another member, not audited in this governance change |
+| UC7 Governance | **Built:** meetings, quorum, resolutions, amendments and resolution-based expulsion; see decision 36 |
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
-Tests: 243 automated tests pass with no database (`npm test`), imports resolve
-(`npm run check`). Next free migration number: **016**.
+Tests: 252 automated tests pass under `TZ=Africa/Johannesburg` (the existing
+grace-boundary fixture still assumes local SA time), plus `npm run test:governance`
+for isolated database/HTTP checks. Imports resolve
+(`npm run check`). Next free migration number: **017** (016 is governance).
 
 ## 2. How to work on any task
 
@@ -93,15 +95,15 @@ the bank balance. Any non-zero difference is shown as an exception and cannot be
 dismissed without an explanation. Existing: `reconciliation` table with one seeded
 unexplained difference. Needs: repo, service, routes, one page, tests.
 
-**T5. UC7 Governance - REQ-104 to 109, and REQ-32.** (L)
-Secretary records a meeting (date, agenda, members present, minutes; `governance.record`
-exists). System computes quorum from attendance against the constitution's quorum
-percentage. Resolutions taken without quorum are advisory and cannot be given effect.
-Record text, votes for, against and abstaining, and the outcome. An expulsion needs a
-resolution (REQ-104). REQ-32: a resolution amending the constitution is given effect by
-calling `createNewVersion()` in `modules/constitution/constitution.service.js`, which
-already exists and deliberately has no route until this is built. Needs new tables
-(meeting, attendance, resolution), the three-file module, a page.
+**T5. UC7 Governance — implemented 29 September 2026.**
+Migration 016, three-file governance module, pure rules and `/governance` screen.
+Includes meeting records, attendance, quorum, immutable resolutions, advisory
+refusal, Chairperson application, atomic constitution versioning and expulsion
+with queue removal and last-officer protection. Decision 36 records the initial
+unanimity threshold, voting denominator and historical-membership limitations.
+Run `npm run test:governance` for isolated database and HTTP evidence. The shared
+database still needs the normal `npm run migrate`; no shared data was changed.
+T7 remains separate. This does not complete the defaulter pipeline.
 
 **T6. Reversing entries - REQ-91, 92.** (M)
 The permission `ledger.reverse` exists but there is no route. Treasurer posts a reversing
@@ -220,8 +222,8 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 ## 7. Suggested order if time is short
 
 1. T2 and T3 (an hour or two each, and they finish work already claimed as done).
-2. T4 Reconciliation and T5 Governance, one person each. These are the two missing
-   use cases.
+2. T4 Reconciliation remains. T5 Governance is implemented; apply migration 016
+   and run the governance demo checks.
 3. T7 Standing engine, then T8 Exit processing.
 4. T6, T13, T12 as time allows.
 5. T10, T11, T14, T15 last; leave what does not fit in `traceability.md` under

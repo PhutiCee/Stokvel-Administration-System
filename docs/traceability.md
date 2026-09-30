@@ -60,7 +60,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-29 | Validate for internal consistency before activation | `rules/constitution.js` → `validateConsistency` | automated: grace ≥ cycle length, quorum outside 1–100, contribution ≤ 0 all refused |
 | REQ-30 | An amendment creates a new version; prior versions retained; effective date recorded | `constitution` unique on `(club_id, version)`; migration 010 triggers refuse `UPDATE` and `DELETE` and require consecutive version numbers with strictly later effective dates; `constitution.service.js` -> `createNewVersion` | database: `UPDATE`, `DELETE`, a version-number gap and a backwards effective date all raise; automated: `versioning.test.js` |
 | REQ-31 | Every rule evaluated against the version in force on the date of the transaction, not the current one | `rules/versioning.js` -> `versionInForce` (the single resolver); `constitution.service.js` -> `getVersionInForceOn`; `GET /api/constitution/in-force?date=` | automated: `versioning.test.js` (on, before and after an effective date; order independence; tie-break); `payouts.service.js` and `claims.service.js` both call the resolver. **Partial:** the contribution and penalty code still resolve the version with their own SQL |
-| REQ-32 | An amendment takes effect only after a resolution meeting quorum and majority | `createNewVersion` exists; it has no route by design | **not met yet.** The service is ready for governance to call. It is not exposed over HTTP until Use Case 7 records the resolution, so that no officer can amend without one |
+| REQ-32 | Amendment requires a carried, quorate resolution | `governance.service.giveEffect` + transactional `createNewVersion` | `test:governance`: advisory refusal, stale vote refusal, atomic rollback |
 | REQ-33 | An amendment applies prospectively only | `rules/versioning.js` -> `validateNewVersion` refuses an effective date in the past | automated: `versioning.test.js`. **Partial:** an amendment cannot be backdated, but a cycle already open when an amendment takes effect is not yet held on the old version |
 
 ## Membership
@@ -201,6 +201,23 @@ cannot be removed at all once a live claim exists against them
 
 ---
 
+## Governance (Use Case 7)
+
+| Requirement | Behaviour | Implementation | Evidence |
+|---|---|---|---|
+| REQ-104 | Expulsion requires a carried resolution | `governance.service.giveEffect`, retained member row, queue removal and revoked club access | `test:governance`: expulsion, queue gap, last-officer refusal, session refusal |
+| REQ-105 | Meeting date, agenda, attendees and minutes | `/governance`, `recordMeeting`, migration 016 | Unit and isolated database/HTTP tests |
+| REQ-106 | Quorum from attendance and constitution | Frozen eligible count, required count, outcome and version | Unit: rounding/boundary; integration: snapshot |
+| REQ-107 | Non-quorate decisions are advisory and never applied | Rules and database outcome guard | Unit and integration refusals |
+| REQ-108 | Resolution text, for/against/abstaining votes and outcome | Immutable `resolution` row; totals equal attendance | Unit: invalid/tied/abstaining votes; database immutability |
+| REQ-109 | Constitutional majority before amendment takes effect | Versioned percentage, exact voted payload, atomic application | Integration: quorum/majority, stale vote, rollback; decision 36 explains initial unanimity |
+
+The defaulter pipeline (REQ-101–103) remains separate work. Existing T2 cycle
+version-selection issues remain outstanding. No shared database was migrated
+as part of development verification.
+
+---
+
 ## Not yet implemented
 
 Scheduled for the sprints after the preliminary release. The full, task-by-task list with sizes and suggested order is in `docs/remaining-work.md`.
@@ -208,9 +225,11 @@ Scheduled for the sprints after the preliminary release. The full, task-by-task 
 **Reconciliation (Use Case 5)** — REQ-96 to REQ-98. The table exists and is seeded
 with a deliberate unexplained difference; the view is not built.
 
-**Assistant (Use Case 6)** — REQ-110 to REQ-118.
+**Assistant (Use Case 6)** — REQ-119 to REQ-128: implementation is now present
+on `racha`; owned by another member. Compliance was not reassessed in this
+governance change.
 
-**Governance (Use Case 7)** — REQ-104 to REQ-109. Meetings, quorum and resolutions.
+
 
 **Defaulter pipeline** — REQ-101 to REQ-103.
 
@@ -226,7 +245,8 @@ REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 243 automated tests, no database required
+npm test     # 252 automated tests; existing grace-boundary test assumes SA timezone
+npm run test:governance  # isolated PostgreSQL engine, no external database
 npm run check  # every relative import resolves
 ```
 

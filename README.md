@@ -211,6 +211,7 @@ built, plus six beyond it.
 - Club ledger and member statements
 - Platform administration: provisioning, suspension, aggregate figures
 - Home page, sign-in, club selector, dashboard
+- Governance: meetings, quorum, resolutions, constitution amendments and resolution-based expulsion (Use Case 7)
 
 **Scheduled**
 
@@ -218,7 +219,6 @@ built, plus six beyond it.
 - Burial claims (Use Case 4)
 - Reconciliation (Use Case 5)
 - Assistant (Use Case 6)
-- Governance: meetings, quorum, resolutions (Use Case 7)
 - Notifications, defaulter pipeline, ledger export
 - REQ-3 federated sign-in. Deliberately not shown on the sign-in page until it
   works — a button that does nothing is worse than no button.
@@ -242,3 +242,27 @@ under Testability.
 `npm run check` walks every `require()` in `server/src` and reports any that do
 not resolve. A wrong relative path otherwise only surfaces when Node reaches
 that line, which can be long after startup.
+
+## Governance (Use Case 7)
+
+After pulling this change, run `npm install` and `npm run migrate` to apply
+**016_governance.sql**, then start the web and API processes as usual. Migration
+016 adds tables and a constitutional majority field; it does not reseed or erase
+club data. Reserve the next migration number (017) for subsequent work.
+
+Open **Governance** in the club navigation. A Secretary or Chairperson records
+a completed meeting's date, agenda, attendance and minutes. Quorum is calculated
+and saved. Record resolution text and votes accounting for everyone present.
+Only a Chairperson can propose an amendment or give a carried resolution effect.
+Members can read the records. Meetings without quorum produce advisory decisions
+which cannot be applied. The defaulter pipeline remains a separate task.
+
+Existing constitutions initially require **100% of attendees** in favour of an
+amendment because no threshold was specified before. This configurable field can
+only be changed by a valid resolution under the existing threshold. See decision
+36 in `Docs/Desicions.md` for the voting and historical-membership assumptions.
+
+Run `npm run test:governance` for migration, service and HTTP integration checks
+using a disposable PostgreSQL engine in memory. No Supabase credentials or database
+reset is required. `npm test` covers the pure rules; its pre-existing grace-period
+fixture assumes the Africa/Johannesburg timezone.

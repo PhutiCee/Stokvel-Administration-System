@@ -794,3 +794,57 @@ the way the ledger, a payout or a claim is.
 **Held in memory, never on disk:** `multer` is configured with
 `memoryStorage`, so an upload exists only for the length of the request and
 there is no temp file to clean up.
+
+---
+
+## 36. Governance freezes attendance and the constitutional rules used for a vote
+
+REQ-104 to REQ-109 and REQ-32 are implemented by migration 016, the governance
+module and `/governance`. A Secretary or Chairperson records a completed meeting;
+only the Chairperson submits constitutional amendments and gives carried decisions
+effect. Club members can read meeting records. Platform administrators cannot.
+Attendance is unique, club-scoped and checked against join/exit dates. Suspended
+and in-arrears memberships remain part of the active membership denominator;
+Exited/Expelled memberships without an exit date cannot be reconstructed safely
+and are excluded. The eligible count, attendees, quorum count and constitution
+version are frozen at recording time; later changes do not rewrite that meeting.
+Historical role/standing changes without dates are not reconstructed.
+
+Quorum rounds up. Every attendee must be accounted for in the vote totals,
+including abstentions. A non-quorate meeting always produces advisory resolutions;
+they can be recorded but never applied. General and expulsion motions require
+more than half of everyone present to vote in favour; ties fail and abstentions
+cannot manufacture a majority. Meeting, attendance and resolution records are
+immutable, apart from the one-time application marker on a carried resolution.
+Correct errors by recording a new, explicitly corrective record.
+
+**Unspecified amendment threshold:** REQ-109 refers to a constitutional majority
+but neither the supplied SRS nor the previous schema specifies a value or distinct
+amendment classes. This implementation treats supported parameter amendments as
+one class and adds `amendment_majority_percentage` to each constitution version.
+The conservative initial value is 100% of attendees (unanimity), not an invented
+simple majority. A carried amendment can change it to a whole percentage from
+51 to 100. The existing threshold governs the vote that changes the threshold.
+The UI displays the meeting's version and required percentage. The group should
+confirm this default against the actual club constitutions; additional amendment
+classes would need explicit requirements.
+
+A resolution stores the exact changes and effective date voted on. Applying it
+calls `createNewVersion()` inside the same transaction as the application marker.
+A second application, stale constitution baseline or effective date in the past
+is refused. An intervening amendment needs a fresh resolution, never silent
+rebasing of the members' vote. Existing contribution-cycle selection issues in
+T2 remain separate and are not claimed fixed by this governance work.
+
+Expulsion needs a carried resolution, preserves membership/ledger history, records
+the exit date and closes the queue gap in one transaction. It refuses to remove
+the last Chairperson or Treasurer until a replacement exists (REQ-49). Expelled
+members cannot switch back into the club or retain permissions through an existing
+session. Defaulter thresholds and automatic stage advancement remain T7, assigned
+separately; governance does not invent those thresholds.
+
+`npm run test:governance` runs the migrations and real services/HTTP middleware in
+an isolated PGlite PostgreSQL engine. It needs no credentials and never connects
+to, truncates or rebuilds the shared Supabase database. It proves transaction
+rollback, constraints, tenant isolation, role checks and expulsion behaviour.
+It does not claim to test distributed concurrency or Supabase network behaviour.

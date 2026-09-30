@@ -34,6 +34,7 @@ const AMENDABLE_FIELDS = [
     "penaltyAmount",
     "gracePeriodDays",
     "quorumPercentage",
+    "amendmentMajorityPercentage",
     "exitNoticeDays",
     "payoutOrderMethod",
     "forfeitureRule",
@@ -238,6 +239,9 @@ function validateNewVersion({ existing, clubType, changes, effectiveDate, amendm
         errors.amendmentNote = "Record why the constitution is being amended.";
     }
 
+    if (merged.amendmentMajorityPercentage !== undefined && (!Number.isInteger(Number(merged.amendmentMajorityPercentage)) || Number(merged.amendmentMajorityPercentage) < 51 || Number(merged.amendmentMajorityPercentage) > 100)) {
+        errors.amendmentMajorityPercentage = "Amendment majority must be a whole percentage from 51 to 100.";
+    }
     // REQ-29: the amended set must be coherent before it is activated.
     const consistency = validateConsistency({ clubType, ...merged });
     Object.assign(errors, consistency.errors);

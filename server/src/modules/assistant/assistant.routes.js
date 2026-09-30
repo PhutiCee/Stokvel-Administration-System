@@ -1,10 +1,10 @@
 "use strict";
 
 const express = require("express");
-const { requireClubContext } = require("../middleware/tenancy");
-const { authorize } = require("../middleware/authorize");
-const { asyncRoute } = require("../middleware/errors");
-const { BadRequest } = require("../lib/errors");
+const { requireClubContext } = require("../../middleware/tenancy");
+const { authorize } = require("../../middleware/authorize");
+const { asyncRoute } = require("../../middleware/errors");
+const { BadRequest } = require("../../lib/errors");
 
 const router = express.Router();
 router.use(requireClubContext);

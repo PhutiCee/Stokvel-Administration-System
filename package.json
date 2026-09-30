@@ -21,6 +21,10 @@
     "seed": "node server/src/db/seed.js",
     "db:rebuild": "npm run migrate:reset && npm run seed",
     "test": "cd server && node --test",
-    "check": "node server/check-imports.js"
+    "check": "node server/check-imports.js",
+    "test:governance": "node server/integration/governance.js"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

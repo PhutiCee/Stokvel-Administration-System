@@ -9,7 +9,7 @@
  */
 
 const COLUMNS = `
-    constitution_id, version,
+    constitution_id, version, amendment_majority_percentage,
     effective_date::text    AS effective_date,
     contribution_amount, cycle_frequency,
     cycle_start_date::text  AS cycle_start_date,
@@ -22,6 +22,7 @@ function present(r) {
     return {
         constitutionId: r.constitution_id,
         version: r.version,
+        amendmentMajorityPercentage: r.amendment_majority_percentage,
         effectiveDate: r.effective_date,
         contributionAmount: r.contribution_amount,
         cycleFrequency: r.cycle_frequency,
@@ -69,8 +70,8 @@ async function insertVersion(db, v) {
               grace_period_days, quorum_percentage, exit_notice_days,
               payout_order_method, forfeiture_rule,
               waiting_period_days, benefit_schedule,
-              year_end_month, year_end_day, amendment_note, adopted_by)
-         VALUES ($1, $2, $3::date, $4, $5, $6::date, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+              year_end_month, year_end_day, amendment_note, adopted_by, amendment_majority_percentage)
+         VALUES ($1, $2, $3::date, $4, $5, $6::date, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          RETURNING ${COLUMNS}`,
         [db.clubId, v.version, v.effectiveDate, v.contributionAmount,
          v.cycleFrequency, v.cycleStartDate, v.penaltyAmount,
@@ -78,7 +79,7 @@ async function insertVersion(db, v) {
          v.payoutOrderMethod, v.forfeitureRule,
          v.waitingPeriodDays, JSON.stringify(v.benefitSchedule),
          v.yearEndMonth, v.yearEndDay,
-         v.amendmentNote, v.adoptedBy]
+         v.amendmentNote, v.adoptedBy, v.amendmentMajorityPercentage ?? 100]
     );
     return present(row);
 }

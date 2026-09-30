@@ -35,6 +35,7 @@ import { cx, initials } from "@/lib/format";
 // the same reasoning the API applies when it refuses those routes outright.
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view.dashboard" },
+  { href: "/governance", label: "Governance", icon: FileText, permission: "view.governance" },
   { href: "/contributions", label: "Contributions", icon: Receipt, permission: "view.dashboard" },
   { href: "/payouts", label: "Payouts", icon: Wallet, permission: "payout.view", clubType: "Rotating" },
   { href: "/queue", label: "Queue", icon: ListOrdered, permission: "view.queue", clubType: "Rotating" },

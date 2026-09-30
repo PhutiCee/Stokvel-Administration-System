@@ -196,3 +196,12 @@ export const auth = {
   selectClub: (clubId) => api.post("/api/auth/club", { clubId }),
   leaveClub: () => api.delete("/api/auth/club")
 };
+// Use Case 7: meetings and resolutions.
+export const governance = {
+  list: () => api.get('/api/governance'),
+  get: id => api.get(`/api/governance/${id}`),
+  candidates: date => api.get(`/api/governance/candidates?date=${encodeURIComponent(date)}`),
+  recordMeeting: data => api.post('/api/governance', data),
+  recordResolution: (id, data) => api.post(`/api/governance/${id}/resolutions`, data),
+  apply: id => api.post(`/api/governance/resolutions/${id}/apply`)
+};
