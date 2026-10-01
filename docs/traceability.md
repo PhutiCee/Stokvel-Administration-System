@@ -271,3 +271,46 @@ The automated tests exercise the rules engine, the permission matrix, monetary
 arithmetic and password storage. They need no database and no network, so they
 run even when the database is unreachable — which is the point of keeping the
 rules pure.
+
+
+## Membership and communications update — 30 September 2026
+
+This status supersedes earlier "not covered" statements for beneficiaries,
+announcements, exit processing and role dashboard financial detail.
+
+| Requirements | Evidence | Status |
+|---|---|---|
+| REQ-36 | beneficiaries module; `/beneficiaries`; integer-percent rules; completion tests | Implemented |
+| REQ-40,45,46,48,49 | exits module, migration 019; `/exits`; atomic settlement and safeguards | Implemented for fully represented calculation mappings; free-text conditions remain restricted |
+| REQ-47 | Migration 020, General resolution exact-debt snapshot, atomic write-off and exit; exit-writeoffs integration tests | Implemented: settle debts or use a carried exact-debt resolution |
+| REQ-129–131,133–135 | announcements module/page; immutable DB trigger; linked same-club correction | Implemented |
+| REQ-132 | Announcement table available as notification integration source | Assigned to notification owner; not dispatched here |
+| REQ-111 | Own contributions, penalties, outstanding and shared queue projection | Implemented |
+| REQ-112 | Officer month income, payouts/claims/costs, pool, arrears, read-only reconciliation | Implemented against existing ledger; penalty classification conflict in decision 43 |
+| REQ-113 | Chairperson pending payouts/exits/amendments | Partial: pipeline stage counts await teammate |
+| REQ-114 | Platform aggregate snapshot and expandable source totals | Implemented without club/member financial disclosure |
+| REQ-115 | Previous 12 completed months chart and records | Implemented for Treasurer/Chairperson |
+| REQ-116 | Non-zero reconciliation and >7-day overdue rotation indicators | Partial: near-expulsion pipeline alert awaits teammate |
+| REQ-117–118 | Club detail rows and platform aggregate detail rows, each from a read-only snapshot | Implemented; platform detail remains aggregate under REQ-19/20 |
+
+Repeatable evidence: `npm test`, `npm run test:completion`,
+`npm run test:governance`, `node server/integration/screens.js`,
+`node server/integration/ledger-reversals.js`, `npm run check`, `npm run build`.
+No shared database was migrated and no code was pushed to GitHub.
+
+
+### Exit write-off follow-on — 1 October 2026
+
+Migration 020 adds immutable contribution_writeoff allocations and a separate
+written_off_amount. General resolutions include the exact reviewed debts and use
+recorded constitutional voting rules. Only a carried unapplied resolution matching
+the pending notice and unchanged contribution snapshot can be consumed. Consumption,
+zero-cash ledger evidence, repayment, queue removal and membership exit are atomic.
+Expected and captured money remain unchanged. The UI labels historical rows
+"Written off" and balance queries subtract forgiven amounts. No defaulter stages,
+notification delivery or reconciliation capture were added.
+
+`npm run test:exit-writeoffs` proves advisory/rejected/stale/wrong-member refusal,
+rollback after allocation, immutable source history, duplicate prevention and no
+cash capture after an exit. `npm run test:completion` also checks platform aggregate
+sum-to-detail equality and access boundaries. See decision 44 for limits and handoff.

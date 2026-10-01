@@ -17,8 +17,20 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import {
-  LayoutDashboard, Users, Receipt, BookOpen, LogOut, ArrowLeftRight, Menu, X, FileText,
-  Wallet, ListOrdered, PiggyBank, HeartHandshake, MessageCircle
+  LayoutDashboard,
+  Users,
+  Receipt,
+  BookOpen,
+  LogOut,
+  ArrowLeftRight,
+  Menu,
+  X,
+  FileText,
+  Wallet,
+  ListOrdered,
+  PiggyBank,
+  HeartHandshake,
+  MessageCircle,
 } from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
@@ -34,17 +46,89 @@ import { cx, initials } from "@/lib/format";
 // show a member of a different kind, so it does not appear for them at all —
 // the same reasoning the API applies when it refuses those routes outright.
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view.dashboard" },
-  { href: "/governance", label: "Governance", icon: FileText, permission: "view.governance" },
-  { href: "/contributions", label: "Contributions", icon: Receipt, permission: "view.dashboard" },
-  { href: "/payouts", label: "Payouts", icon: Wallet, permission: "payout.view", clubType: "Rotating" },
-  { href: "/queue", label: "Queue", icon: ListOrdered, permission: "view.queue", clubType: "Rotating" },
-  { href: "/distributions", label: "Distributions", icon: PiggyBank, permission: "distribution.view", clubType: "Accumulating" },
-  { href: "/claims", label: "Claims", icon: HeartHandshake, permission: "claim.lodge", clubType: "Burial" },
-  { href: "/members", label: "Members", icon: Users, permission: "view.members" },
-  { href: "/statement", label: "My statement", icon: FileText, permission: "view.ownStatement" },
-  { href: "/ledger", label: "Ledger", icon: BookOpen, permission: "view.ledger" },
-  { href: "/assistant", label: "Assistant", icon: MessageCircle, permission: "assistant.ask" }
+  {
+    href: "/announcements",
+    label: "Announcements",
+    icon: MessageCircle,
+    permission: "view.dashboard",
+  },
+  {
+    href: "/beneficiaries",
+    label: "Beneficiaries",
+    icon: Users,
+    permission: "beneficiary.manage",
+  },
+  { href: "/exits", label: "Exits", icon: LogOut, permission: "exit.notice" },
+  {
+    href: "/governance",
+    label: "Governance",
+    icon: FileText,
+    permission: "view.governance",
+  },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    permission: "view.dashboard",
+  },
+  {
+    href: "/contributions",
+    label: "Contributions",
+    icon: Receipt,
+    permission: "view.dashboard",
+  },
+  {
+    href: "/payouts",
+    label: "Payouts",
+    icon: Wallet,
+    permission: "payout.view",
+    clubType: "Rotating",
+  },
+  {
+    href: "/queue",
+    label: "Queue",
+    icon: ListOrdered,
+    permission: "view.queue",
+    clubType: "Rotating",
+  },
+  {
+    href: "/distributions",
+    label: "Distributions",
+    icon: PiggyBank,
+    permission: "distribution.view",
+    clubType: "Accumulating",
+  },
+  {
+    href: "/claims",
+    label: "Claims",
+    icon: HeartHandshake,
+    permission: "claim.lodge",
+    clubType: "Burial",
+  },
+  {
+    href: "/members",
+    label: "Members",
+    icon: Users,
+    permission: "view.members",
+  },
+  {
+    href: "/statement",
+    label: "My statement",
+    icon: FileText,
+    permission: "view.ownStatement",
+  },
+  {
+    href: "/ledger",
+    label: "Ledger",
+    icon: BookOpen,
+    permission: "view.ledger",
+  },
+  {
+    href: "/assistant",
+    label: "Assistant",
+    icon: MessageCircle,
+    permission: "assistant.ask",
+  },
 ];
 
 export default function ClubShell({ children }) {
@@ -53,7 +137,9 @@ export default function ClubShell({ children }) {
   const { user, club, role, can, signOut } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const items = NAV.filter((n) => can(n.permission) && (!n.clubType || n.clubType === club?.clubType));
+  const items = NAV.filter(
+    (n) => can(n.permission) && (!n.clubType || n.clubType === club?.clubType),
+  );
 
   async function handleSignOut() {
     await signOut();
@@ -120,7 +206,10 @@ export default function ClubShell({ children }) {
           </div>
 
           {/* Desktop navigation */}
-          <nav className="hidden sm:flex gap-1 -mb-px" aria-label="Club sections">
+          <nav
+            className="hidden sm:flex flex-wrap gap-1 -mb-px"
+            aria-label="Club sections"
+          >
             {items.map((item) => {
               const active = pathname === item.href;
               return (
@@ -132,7 +221,7 @@ export default function ClubShell({ children }) {
                     "inline-flex items-center gap-2 px-3 h-11 text-[13.5px] border-b-2 transition-colors",
                     active
                       ? "border-white text-white font-medium"
-                      : "border-transparent text-white/55 hover:text-white/90"
+                      : "border-transparent text-white/55 hover:text-white/90",
                   )}
                 >
                   <item.icon size={15} aria-hidden />
@@ -153,7 +242,9 @@ export default function ClubShell({ children }) {
                 onClick={() => setMenuOpen(false)}
                 className={cx(
                   "flex items-center gap-2.5 h-10 px-2 rounded text-[14px]",
-                  pathname === item.href ? "bg-white/10 text-white font-medium" : "text-white/70"
+                  pathname === item.href
+                    ? "bg-white/10 text-white font-medium"
+                    : "text-white/70",
                 )}
               >
                 <item.icon size={16} aria-hidden />
@@ -180,7 +271,9 @@ export default function ClubShell({ children }) {
         )}
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-5 sm:px-8 py-8">{children}</main>
+      <main className="flex-1 max-w-6xl w-full mx-auto px-5 sm:px-8 py-8">
+        {children}
+      </main>
     </div>
   );
 }
@@ -188,11 +281,20 @@ export default function ClubShell({ children }) {
 /** A heading with optional description and an action on the right. */
 export function PageHeader({ title, description, action, className }) {
   return (
-    <div className={cx("flex flex-wrap items-start justify-between gap-4 mb-6", className)}>
+    <div
+      className={cx(
+        "flex flex-wrap items-start justify-between gap-4 mb-6",
+        className,
+      )}
+    >
       <div className="min-w-0">
-        <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink-900">{title}</h1>
+        <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink-900">
+          {title}
+        </h1>
         {description && (
-          <p className="mt-1 text-[14px] text-ink-500 leading-relaxed max-w-[60ch]">{description}</p>
+          <p className="mt-1 text-[14px] text-ink-500 leading-relaxed max-w-[60ch]">
+            {description}
+          </p>
         )}
       </div>
       {action}

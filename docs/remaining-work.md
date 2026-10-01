@@ -8,6 +8,13 @@ UC7 is implemented below. Other members retain their existing assignments.
 Every requirement below was checked against the actual code, not just against
 `traceability.md`, which turned out to be incomplete (see section 6).
 
+## Update — 30 September 2026
+
+Membership/communications delivery: beneficiaries and immutable announcements are
+implemented; mapped exit settlements and role dashboard detail are available with the
+explicit gaps below. The system is NOT fully SRS-complete. Teammate assignments in
+section 4.5 are unchanged. Integration commands: `npm run test:completion` and `npm run test:exit-writeoffs`.
+
 ## 1. Where we are
 
 | Use case | State |
@@ -22,10 +29,10 @@ Every requirement below was checked against the actual code, not just against
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
-Tests: 258 automated tests pass with timezone-independent calendar rules,
+Tests: 261 automated tests pass with timezone-independent calendar rules,
 plus `npm run test:governance`
 for isolated database/HTTP checks. Imports resolve
-(`npm run check`). Next free migration number: **019** (016–017 governance; 018 ledger reversals).
+(`npm run check`). Next free migration number: **021** (016–017 governance; 018 ledger reversals; 019 membership and announcements; 020 exit write-offs).
 
 ## 2. How to work on any task
 
@@ -136,18 +143,27 @@ constitution (there are no threshold columns yet, so add them and validate them 
 `rules/constitution.js`), automatic return to Good standing when arrears and penalties
 are cleared, with the date recorded. Expulsion must wait for a resolution (T5).
 
-**T8. Exit processing - REQ-40 (exit date), 45, 46, 47, 48.** (L)
-Nothing sets a member to Exited or records an exit date. Build: notice of exit, compute
-repayable and forfeited amounts from the constitution's forfeiture rule, Chairperson
-approval, post to the ledger only on approval, and refuse exit for the member next in a
-Rotating club's queue who has an outstanding contribution. Reuse: payout type
-`Exit settlement` already exists in the schema, `removeFromQueue()` in
-`queue.service.js` is ready to call, and distributions already leave Exited members out
-(decision 28), on the assumption this exists.
+**T8. Exit processing — implemented for supported mapped rules; partial overall.**
+Migration 019 and `/exits` record an immutable constitution calculation mapping,
+notice and calculated assessment; Treasurer prepares and a different Chairperson
+approves. Approval atomically posts repayment and retained-forfeiture evidence,
+settles deducted penalties, closes the queue gap and records Exited/exit date.
+Pending notices do not move funds. The last Chairperson/Treasurer is protected.
+Financial changes require reassessment; insufficient pool funds refuse the transaction.
 
-**T9. Beneficiaries - REQ-36.** (M)
-Member nominates beneficiaries with name, relationship and percentage share; shares must
-total 100. The `beneficiary` table exists; there is no code at all.
+REQ-47 now supports a carried General resolution containing the exact contribution
+debt snapshot. The write-off takes effect atomically with exit approval (migration 020).
+Expected and captured amounts remain intact; forgiven debt is stored separately.
+A changed debt requires a fresh vote. Free-text rules
+with unrepresented conditions (e.g. before completing one rotation) must NOT be
+mapped to an unconditional percentage. Resolve these with the adopted constitution;
+there is no default interpretation. A notice cannot currently be submitted until
+its constitution has a valid mapping. See decision 43 for accounting boundaries.
+
+**T9. Beneficiaries — completed, REQ-36.**
+`/beneficiaries` lets every club role replace their own nominations atomically.
+Names, relationships and positive shares are required, totalling exactly 100%.
+The API derives the member from the session, never the request body.
 
 ### 4.3 Communication
 
@@ -159,20 +175,30 @@ channel preferences (REQ-136); (3) events (REQ-137); (4) delivery record and ret
 (REQ-140). SMS and email need a provider account, so do those last. REQ-141: no
 notification may contain a password, full ID number or bank account number.
 
-**T11. Announcements - REQ-129 to 135.** (M)
-Chairperson or Secretary publishes; author, time, subject, body recorded; shown newest
-first; cannot be edited or deleted; a correction is a new announcement referencing the
-old one; no replies. Sending to channels (REQ-132) depends on T10.
+**T11. Announcements — completed except teammate-owned REQ-132 dispatch.**
+`/announcements` allows Chairperson/Secretary publication, newest-first paging,
+author/time/subject/body and linked corrections. Database triggers prohibit updates
+and deletes. There are no reply/direct-message routes. The notification member must
+consume announcement records and implement delivery/retry/deduplication.
 
 ### 4.4 Reporting and screens
 
-**T12. Dashboards and annual report - REQ-110 to 118.** (L)
-REQ-110 annual report is now implemented on Governance (decision 39).
-The role-specific dashboards and chart/drill-through work remain.
-Today there is one generic dashboard for every role. The SRS wants separate Member,
-Treasurer, Chairperson and Platform Administrator dashboards, a 12-month income and
-expenditure series, exceptions highlighted, every figure drawn from the same query as
-its detail view, and drill-through. REQ-110 is covered by the governance report.
+**T12. Dashboards — member and officer financial detail implemented; partial overall.**
+REQ-110 remains on Governance. `/dashboard` now uses a read-only repeatable snapshot
+for each indicator and its embedded drill-through rows. Member figures cover paid
+contributions, outstanding contributions, unpaid penalties and the shared queue
+projection. Treasurer/Chairperson see month income, payouts/claims, costs, penalties,
+pool, contribution arrears, latest reconciliation and rotation payouts overdue >7 days.
+Chairperson additionally sees pending payouts, exits and constitution proposals.
+A chart and expandable records cover the previous 12 completed calendar months.
+The platform dashboard now opens aggregate source totals for member standings and
+ledger categories (REQ-114,117,118). These use the same read-only snapshot as the cards;
+no club/member financial records are exposed. Ended memberships are excluded.
+
+Still needed: defaulter-stage counts and near-expulsion exceptions from the assigned
+pipeline; full portfolio acceptance and browser/device walkthrough. Reconciliation is read-only here; capture/UI remains teammate-owned. REQ-112's
+wording lists penalties as expenditure, while the existing ledger records them as
+positive assessments: this conflict is flagged in decision 43, not silently changed.
 
 **T13. Batch capture - REQ-58.** (S)
 Treasurer captures contributions for several members in one operation with a running

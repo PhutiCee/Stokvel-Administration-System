@@ -20,6 +20,7 @@ import PolicyEditor, {
   FIELD_LABELS,
   describeRule,
 } from "@/components/governance/PolicyEditor";
+import ExitWriteoffPicker from "@/components/governance/ExitWriteoffPicker";
 import AnnualReport from "@/components/governance/AnnualReport";
 import AmendmentForm from "@/components/governance/AmendmentForm";
 const today = () =>
@@ -74,6 +75,7 @@ export default function GovernancePage() {
     [policyDate, setPolicyDate] = useState(""),
     [attested, setAttested] = useState(false),
     [refreshKey, setRefreshKey] = useState(0);
+  const [exitWriteOff, setExitWriteOff] = useState(null);
   const [kind, setKind] = useState("General"),
     [text, setText] = useState(""),
     [proposalId, setProposalId] = useState(""),
@@ -159,6 +161,7 @@ export default function GovernancePage() {
     }
   }
   function resetVote() {
+    setExitWriteOff(null);
     setText("");
     setVotes({ votesFor: "", votesAgainst: "", abstentions: "" });
     setProposalId("");
@@ -190,6 +193,7 @@ export default function GovernancePage() {
         proposalId,
         memberId,
         successorMemberId: successor || null,
+        exitWriteOff: kind === "General" ? exitWriteOff : null,
         ...Object.fromEntries(
           Object.entries(votes).map(([k, v]) => [k, Number(v)]),
         ),
@@ -598,6 +602,7 @@ export default function GovernancePage() {
                         {detail.voting_policy &&
                           r.outcome === "Carried" &&
                           !r.applied_at &&
+                          !r.payload?.exitWriteOff &&
                           can("governance.apply") && (
                             <Button
                               variant="secondary"
@@ -607,6 +612,16 @@ export default function GovernancePage() {
                               Give effect
                             </Button>
                           )}
+                        {r.payload?.exitWriteOff && (
+                          <p className="text-sm my-2">
+                            Contribution debt write-off: ZAR{" "}
+                            {r.payload.exitWriteOff.amount}.{" "}
+                            <a className="underline" href="/exits">
+                              Review and apply with the exit settlement
+                            </a>
+                            .
+                          </p>
+                        )}
                         {r.outcome === "Advisory" && (
                           <p className="text-xs">
                             Not binding: the meeting did not meet quorum.
@@ -687,6 +702,12 @@ export default function GovernancePage() {
                               onChange={(e) => setText(e.target.value)}
                             />
                           </Field>
+                        )}
+                        {kind === "General" && (
+                          <ExitWriteoffPicker
+                            key={selected + refreshKey}
+                            onChange={setExitWriteOff}
+                          />
                         )}
                         {kind === "Expulsion" && (
                           <>

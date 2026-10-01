@@ -228,10 +228,10 @@ async function generateMemberStatement(db, memberId) {
   // Outstanding contributions, so the statement answers "do I owe anything"
   // as well as "what have I paid".
   const owing = await db.one(
-    `SELECT COALESCE(sum(expected_amount - captured_amount), 0) AS outstanding,
-                count(*) FILTER (WHERE captured_amount < expected_amount)::int AS unpaid_cycles
+    `SELECT COALESCE(sum(expected_amount - captured_amount - written_off_amount), 0) AS outstanding,
+                count(*) FILTER (WHERE captured_amount < expected_amount - written_off_amount)::int AS unpaid_cycles
            FROM contribution
-          WHERE club_id = $1 AND member_id = $2 AND captured_amount < expected_amount`,
+          WHERE club_id = $1 AND member_id = $2 AND captured_amount < expected_amount - written_off_amount`,
     [db.clubId, memberId],
   );
 

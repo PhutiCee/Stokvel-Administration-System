@@ -1053,3 +1053,133 @@ cover permissions, pending/approval/posting, unchanged balance at approval, exac
 opposing amounts, rejection/retry, database guards, history immutability, duplicate
 and tenant refusals, and rollback after insertion. Existing governance and screen
 integration tests also pass. No shared database was migrated or branch pushed.
+
+
+## Decision 43 — Membership completion and dashboard evidence (30 September 2026)
+
+REQ-36 uses integer hundredths of a percentage, not a floating-point tolerance.
+Replacement of the member's nominations is one club-locked transaction. All club
+roles may nominate their own beneficiaries; platform administrators may not.
+
+REQ-129–135 announcements are immutable records. Corrections are new records with
+a same-club foreign key and are displayed alongside the original. Paging is newest
+first. Chairperson/Secretary may publish. REQ-132 channel dispatch remains with the
+notification owner; reading announcement rows is the integration boundary, not a
+claim that messages have been delivered.
+
+Exit rules are free text, not an executable policy. Chairperson may record an
+immutable mapping ONLY when its calculation exactly represents the adopted rule.
+The supported sequence is: selected-period contribution ledger receipts minus prior
+payouts if selected (floor zero), unpaid penalties if selected, proportionate costs
+if selected, then percentage forfeiture. Costs use the member's net contribution
+share of club net contributions in that period. Fractional cents are rounded DOWN;
+deductions never exceed remaining gross entitlement. Negative net period inputs
+require review. Periods are membership, notice calendar year or constitution cycle
+start. Rules with other conditions, paid-penalty deductions, another rounding rule,
+or another cost-sharing basis are unsupported. In particular, the seed's
+"before completing one full rotation" condition is NOT represented by selecting 10%.
+Do not attest to a partial mapping. A mapping correction requires a new adopted
+constitution version; previous notices retain their version and calculation evidence.
+
+REQ-45–46: notice submission records an initial calculation. A Treasurer refreshes
+it for approval; a different current Chairperson approves, after the notice period.
+Approval recomputes inputs and refuses stale assessments. Repayment, retained
+forfeiture evidence, deduction settlement, queue removal and exit history commit
+atomically. An approved Exit settlement payout provides two-account evidence for
+positive repayments. Zero repayment creates no zero-valued payout, but still records
+forfeiture evidence. Penalty deductions increase settled_amount, without posting
+another receipt. The member and prior transactions are retained. Last-officer,
+queue-head arrears, pending payout and insufficient-pool safeguards apply.
+
+ACCOUNTING DECISION REQUIRING GROUP REVIEW: forfeiture retains existing money; it
+is recorded as a zero-value Adjustment with the retained amount in its description
+and the immutable assessment. Posting a positive forfeiture receipt would count the
+same cash twice. The SRS does not specify a separate forfeiture ledger category.
+The implementation records it only at approval without changing cash twice.
+
+HISTORICAL GAP (resolved by decision 44 and migration 020 below): REQ-47 also allows express write-off by resolution. That alternative
+is NOT implemented. The existing General resolution text cannot safely authorise a
+specific member/debt amount. A future structured resolution and obligation allocation
+must agree with the contribution/defaulter module; do not fabricate a cash capture to
+clear debt. Until then the queue head with arrears cannot exit.
+
+EXISTING LEDGER BOUNDARY: contribution ledger receipts include excess payments and
+credits; source allocations are not reconstructed after reversals (decision 42).
+Settlement policy mapping does not repair that history. Cases requiring separation
+of paid penalties, credits or reversed allocations need accounting review before
+approval. No arbitrary interpretation of a free-text constitution is supplied.
+
+REQ-111–118: financial dashboard indicators are calculated from exactly the rows
+returned in their expandable detail. Multiple reads run in a READ ONLY REPEATABLE
+READ transaction. Member responses contain only that member's detailed finances;
+Treasurer/Chairperson see club financial records. Queue projection reuses queue.service.
+The 12-month series uses the previous 12 COMPLETED SA calendar months, while current
+month cards cover the current month. Reversals retain the original entry category.
+No reconciliation is represented as "Not recorded", not a falsely balanced result.
+Missing defaulter stages are explicitly labelled unavailable, not zero.
+
+DOCUMENT CONFLICT: REQ-112 describes penalties among expenses, but the current
+ledger posts penalty assessments positively (and cash collection is recorded as
+Contribution). The dashboard follows those existing ledger signs and displays
+penalty entries separately. It is a ledger movement report, not a newly certified
+cash-flow statement. The group must reconcile terminology and accounting rules.
+
+Verification: 261 unit tests; isolated authenticated HTTP/database integration for
+beneficiaries, announcements, exit settlement, stale assessment, insufficient funds,
+last officer, queue-head safeguards and dashboard privacy. Existing governance,
+screens and reversal integration suites passed; production build and imports passed.
+Interactive browser verification was unavailable: the browser executable was missing
+and its download failed. The supplied manual walkthrough remains an acceptance task.
+
+
+## Decision 44 — Exact debt write-off and platform aggregate detail (1 October 2026)
+
+This supersedes decision 43's outstanding REQ-47 gap and its platform drill-through
+limitation. A Chairperson/Secretary can record a General resolution whose immutable
+payload identifies an exit notice, member, every affected contribution, expected
+amount, captured amount, prior written-off amount and exact debt total. The source
+rows must match the snapshot displayed before submission. The existing constitution's
+General voting rule and meeting quorum determine the result; no new majority is
+invented. The resolution text explicitly states the amount, member and notice.
+
+Because captured contribution history does not reconstruct arbitrary past balances,
+these snapshot votes must be recorded ON the meeting date in South African time.
+A backdated debt vote is refused instead of using today's debt as past evidence.
+If the club constitution specifies a special debt-write-off majority, this General-rule
+workflow must not be used until that separate rule is supported. Do not change the
+General majority merely to fit one debt clause.
+
+A carried resolution does not independently forgive debt. It is consumed only in
+the matching exit approval transaction, after Treasurer assessment, notice-period,
+last-officer and funding checks. Debts must still match every recorded amount. Any
+payment, new obligation or cancelled/replaced notice invalidates the old snapshot;
+a fresh vote is needed. Advisory, rejected, applied and wrong-member resolutions are
+refused. This completes REQ-47's settle-or-expressly-write-off alternatives.
+
+Contribution.expected_amount and captured_amount are preserved. A separate immutable
+contribution_writeoff allocation and written_off_amount record forgiven debt. Net
+outstanding is greatest(expected_amount - captured_amount - written_off_amount, 0).
+The cash ledger receives a ZERO Adjustment describing the debt and resolution; it
+receives no invented Contribution or Expense. Exit approval, resolution application,
+allocations, repayment and Exited status commit together. A deferred database guard
+refuses allocations without the matching approved exit. Source money cannot be
+rewritten after write-off, and new captures for ended memberships are refused.
+
+Integration handoff: the defaulter and batch-capture owners must use the net
+outstanding formula and skip Exited/Expelled memberships. They retain ownership of
+those modules. Existing statement/member/payout/dashboard/club-selection balance
+queries are updated. Assistant code has ONLY the same outstanding-balance SQL change;
+no assistant behaviour, prompts or feature implementation has been replaced.
+
+Platform detail remains aggregate under REQ-19/20. Its member count is the sum of
+non-ended standing buckets, and its funds figure is the sum of platform-wide ledger
+category totals (including reversals in their original category). The same returned
+rows power the figures and their expandable details. Club names/statuses remain
+visible for administration; club/member financial records are never returned. A
+read-only repeatable-read transaction keeps stats and club list consistent.
+
+Evidence: new authenticated HTTP/isolated-database tests cover exact snapshot votes,
+advisory/rejected/wrong-member/stale refusals, failure AFTER write-off allocation with
+full rollback, final cash balance, preserved original source money, blocked recapture,
+immutable allocations and platform aggregate/privacy boundaries. Existing governance,
+screens, reversal and completion suites pass. Browser acceptance remains manual.

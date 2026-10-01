@@ -43,10 +43,17 @@ const STATUS_TONE = {
   Partial: "attention",
   Outstanding: "neutral",
   Late: "exception",
+  "Written off": "neutral",
 };
 
 /** Outstanding work first, then by name. */
-const ORDER = { Late: 0, Outstanding: 1, Partial: 2, Paid: 3 };
+const ORDER = {
+  Late: 0,
+  Outstanding: 1,
+  Partial: 2,
+  Paid: 3,
+  "Written off": 4,
+};
 
 export default function ContributionsPage() {
   const { can } = useSession();
@@ -260,7 +267,9 @@ export default function ContributionsPage() {
           ) : (
             <ul className="space-y-2">
               {rows.map((c) => {
-                const short = !isZeroAmount(c.expected) && c.status !== "Paid";
+                const short =
+                  !isZeroAmount(c.expected) &&
+                  !["Paid", "Written off"].includes(c.status);
                 const active = selected?.contributionId === c.contributionId;
                 return (
                   <li key={c.contributionId}>
@@ -285,6 +294,11 @@ export default function ContributionsPage() {
                         </p>
                         <p className="text-[12.5px] text-ink-500 font-mono tnum">
                           {money(c.captured)} of {money(c.expected)}
+                          {c.status === "Written off" && (
+                            <span className="block">
+                              {money(c.writtenOff)} written off by resolution
+                            </span>
+                          )}
                           {c.method ? ` · ${c.method}` : ""}
                         </p>
                       </div>
@@ -302,7 +316,9 @@ export default function ContributionsPage() {
                         Proof
                       </Button>
                       {can("contribution.capture") &&
-                        cycle.status === "Open" && (
+                        cycle.status === "Open" &&
+                        c.status !== "Written off" &&
+                        !["Exited", "Expelled"].includes(c.standing) && (
                           <Button
                             size="sm"
                             variant={short ? "primary" : "secondary"}
@@ -364,9 +380,7 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
   );
   const [method, setMethod] = useState("Cash");
   const [reference, setReference] = useState("");
-  const [receiptDate, setReceiptDate] = useState(
-    todayIso(),
-  );
+  const [receiptDate, setReceiptDate] = useState(todayIso());
   const [fields, setFields] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);

@@ -2,7 +2,7 @@
   "name": "stokvel-administration-system",
   "version": "0.1.0",
   "private": true,
-  "description": "Stokvel Administration System — SCSC082 Software Engineering, Group 5, University of Limpopo",
+  "description": "Stokvel Administration System \u2014 SCSC082 Software Engineering, Group 5, University of Limpopo",
   "workspaces": [
     "server",
     "web"
@@ -22,7 +22,9 @@
     "db:rebuild": "npm run migrate:reset && npm run seed",
     "test": "cd server && node --test",
     "check": "node server/check-imports.js",
-    "test:governance": "node server/integration/governance.js"
+    "test:governance": "node server/integration/governance.js",
+    "test:completion": "node server/integration/completion.js",
+    "test:exit-writeoffs": "node server/integration/exit-writeoffs.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
