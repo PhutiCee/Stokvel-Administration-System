@@ -42,9 +42,11 @@ const AMENDABLE_FIELDS = [
     "waitingPeriodDays",
     "benefitSchedule",
     "yearEndMonth",
-    "yearEndDay"
+    "yearEndDay",
+    "warningAfterMissed",
+    "suspensionAfterMissed",
+    "expulsionAfterMissed"
 ];
-
 const MONEY_FIELDS = ["contributionAmount", "penaltyAmount"];
 
 // ---------------------------------------------------------------------------

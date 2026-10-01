@@ -10,6 +10,7 @@
 
 const COLUMNS = `
     constitution_id, version, amendment_majority_percentage, governance_policy,
+     warning_after_missed, suspension_after_missed, expulsion_after_missed,
     effective_date::text    AS effective_date,
     contribution_amount, cycle_frequency,
     cycle_start_date::text  AS cycle_start_date,
@@ -24,6 +25,9 @@ function present(r) {
         version: r.version,
         amendmentMajorityPercentage: r.amendment_majority_percentage,
         governancePolicy: r.governance_policy,
+                warningAfterMissed: r.warning_after_missed,
+        suspensionAfterMissed: r.suspension_after_missed,
+        expulsionAfterMissed: r.expulsion_after_missed,
         effectiveDate: r.effective_date,
         contributionAmount: r.contribution_amount,
         cycleFrequency: r.cycle_frequency,
@@ -71,8 +75,10 @@ async function insertVersion(db, v) {
               grace_period_days, quorum_percentage, exit_notice_days,
               payout_order_method, forfeiture_rule,
               waiting_period_days, benefit_schedule,
-              year_end_month, year_end_day, amendment_note, adopted_by, amendment_majority_percentage, governance_policy)
-         VALUES ($1, $2, $3::date, $4, $5, $6::date, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+              year_end_month, year_end_day, amendment_note, adopted_by, amendment_majority_percentage, governance_policy,
+              warning_after_missed, suspension_after_missed, expulsion_after_missed)
+         VALUES ($1, $2, $3::date, $4, $5, $6::date, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                 $21, $22, $23)
          RETURNING ${COLUMNS}`,
         [db.clubId, v.version, v.effectiveDate, v.contributionAmount,
          v.cycleFrequency, v.cycleStartDate, v.penaltyAmount,
@@ -80,7 +86,8 @@ async function insertVersion(db, v) {
          v.payoutOrderMethod, v.forfeitureRule,
          v.waitingPeriodDays, JSON.stringify(v.benefitSchedule),
          v.yearEndMonth, v.yearEndDay,
-         v.amendmentNote, v.adoptedBy, v.amendmentMajorityPercentage ?? 100, v.governancePolicy ? JSON.stringify(v.governancePolicy) : null]
+         v.amendmentNote, v.adoptedBy, v.amendmentMajorityPercentage ?? 100, v.governancePolicy ? JSON.stringify(v.governancePolicy) : null,
+         v.warningAfterMissed ?? null, v.suspensionAfterMissed ?? null, v.expulsionAfterMissed ?? null]
     );
     return present(row);
 }

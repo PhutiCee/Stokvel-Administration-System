@@ -30,7 +30,7 @@ section 4.5 are unchanged. Integration commands: `npm run test:completion` and `
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34), and the
 standing engine (REQ-44, 101 to 103; migration 021, see T7).
-Tests: 261 automated tests pass with timezone-independent calendar rules,
+Tests: 276 automated tests pass with timezone-independent calendar rules,
 plus `npm run test:governance`
 for isolated database/HTTP checks. Imports resolve
 (`npm run check`). Next free migration number: **022** (016–017 governance; 018 ledger reversals; 019 membership and announcements; 020 exit write-offs; 021 standing engine).

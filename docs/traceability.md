@@ -206,6 +206,7 @@ cannot be removed at all once a live claim exists against them
 |---|---|---|---|
 | REQ-104 | Expulsion requires a carried resolution | `governance.service.giveEffect`, retained member row, queue removal and revoked club access | `test:governance`: expulsion, queue gap, last-officer refusal, session refusal |
 | REQ-105 | Meeting date, agenda, attendees and minutes | `/governance`, `recordMeeting`, migration 016 | Unit and isolated database/HTTP tests |
+| REQ-44, REQ-101 to REQ-103 | Standing pipeline: warning, suspension, expulsion on constitution thresholds, return to Good standing, dated record | `rules/standing.js`, `modules/standing`, migration 021 | Unit tests (`standing.test.js`, `versioning.test.js`) |
 | REQ-106 | Quorum from attendance and constitution | Frozen eligible count, required count, outcome and version | Unit: rounding/boundary; integration: snapshot |
 | REQ-107 | Non-quorate decisions are advisory and never applied | Rules and database outcome guard | Unit and integration refusals |
 | REQ-108 | Resolution text, for/against/abstaining votes and outcome | Immutable `resolution` row; totals equal attendance | Unit: invalid/tied/abstaining votes; database immutability |

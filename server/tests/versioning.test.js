@@ -258,3 +258,51 @@ test("validateNewVersion - REQ-29, REQ-30, REQ-33", async (t) => {
         assert.deepEqual(n.benefitSchedule, []);
     });
 });
+
+
+// ---------------------------------------------------------------------------
+test("standing thresholds - REQ-44, REQ-101 to REQ-103", async (t) => {
+    const today = "2026-09-20";
+    const base = v(1, "2026-01-01", {
+        contributionAmount: "500.00", cycleFrequency: "Monthly", cycleStartDate: "2026-01-01",
+        penaltyAmount: "50.00", gracePeriodDays: 5, quorumPercentage: 60, exitNoticeDays: 30,
+        payoutOrderMethod: "Random draw", forfeitureRule: null,
+        waitingPeriodDays: 0, benefitSchedule: [],
+        warningAfterMissed: null, suspensionAfterMissed: null, expulsionAfterMissed: null
+    });
+    const amend = (over = {}) => validateNewVersion({
+        existing: [base], clubType: "Rotating", effectiveDate: "2026-10-01",
+        amendmentNote: "Agreed at the annual meeting", today, ...over
+    });
+
+    await t.test("a club can set all three thresholds by amendment", () => {
+        const r = amend({ changes: { warningAfterMissed: 1, suspensionAfterMissed: 3, expulsionAfterMissed: 6 } });
+        assert.equal(r.valid, true, JSON.stringify(r.errors));
+        assert.deepEqual(
+            r.changed.map((c) => c.field),
+            ["warningAfterMissed", "suspensionAfterMissed", "expulsionAfterMissed"]
+        );
+    });
+
+    await t.test("thresholds must be given together", () => {
+        assert.ok(amend({ changes: { warningAfterMissed: 2 } }).errors.suspensionAfterMissed);
+    });
+
+    await t.test("thresholds must increase: warning, then suspension, then expulsion", () => {
+        const r = amend({ changes: { warningAfterMissed: 3, suspensionAfterMissed: 3, expulsionAfterMissed: 6 } });
+        assert.equal(r.valid, false);
+        assert.ok(r.errors.expulsionAfterMissed);
+    });
+
+    await t.test("a threshold below 1 or not a whole number is refused", () => {
+        assert.ok(amend({ changes: { warningAfterMissed: 0, suspensionAfterMissed: 3, expulsionAfterMissed: 6 } }).errors.warningAfterMissed);
+        assert.ok(amend({ changes: { warningAfterMissed: 1.5, suspensionAfterMissed: 3, expulsionAfterMissed: 6 } }).errors.warningAfterMissed);
+    });
+
+    await t.test("a later amendment keeps thresholds it does not mention", () => {
+        const withThresholds = { ...base, warningAfterMissed: 1, suspensionAfterMissed: 3, expulsionAfterMissed: 6 };
+        const r = amend({ existing: [withThresholds], changes: { contributionAmount: "550" } });
+        assert.equal(r.valid, true, JSON.stringify(r.errors));
+        assert.equal(r.merged.suspensionAfterMissed, 3);
+    });
+});

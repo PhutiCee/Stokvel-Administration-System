@@ -1183,3 +1183,31 @@ advisory/rejected/wrong-member/stale refusals, failure AFTER write-off allocatio
 full rollback, final cash balance, preserved original source money, blocked recapture,
 immutable allocations and platform aggregate/privacy boundaries. Existing governance,
 screens, reversal and completion suites pass. Browser acceptance remains manual.
+
+## Decision 45 — Standing engine driven by constitution thresholds (1 October 2026)
+
+Implements REQ-44 and REQ-101 to REQ-103 (T7). A member's standing now changes
+automatically from thresholds, counted in missed contributions, that the
+constitution carries. The engine moves one step per run (Good standing, then In
+arrears, then Suspended) so that every stage is recorded. A member returns to
+Good standing once arrears and unwaived penalties are both cleared.
+
+The warning stage maps to the existing In arrears standing instead of a new enum
+value. The member_standing enum (migration 004) is not altered.
+
+The three thresholds are new nullable columns on constitution (migration 021).
+Migration 010 forbids editing a recorded version, so a club sets them by recording
+an amendment. They must be given all together or not at all, and strictly
+increasing, which is enforced by a database CHECK and by validateConsistency.
+Every existing version holds NULL, and a club whose version in force has no
+thresholds is left unchanged.
+
+The engine never expels. Expelled is reached only through the governance
+expulsion resolution (decisions 36 and 37), which also preserves history, closes
+the queue gap and handles officer succession. The engine's own call is one step
+short of that stage.
+
+A contribution counts as missed once its cycle's grace period has ended, using
+the net outstanding formula from decision 44. Exited and Expelled memberships are
+skipped. Every change is written to the append-only standing_change table with
+its date and the acting user (empty when the engine acted on its own).
