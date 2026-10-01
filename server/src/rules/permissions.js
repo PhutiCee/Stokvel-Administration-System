@@ -39,7 +39,7 @@ const MATRIX = {
         "distribution.recordFinancials",
         // REQ-83 to REQ-88, Use Case 4. The Treasurer starts paying a lodged
         // claim, the same role that initiates any other payout.
-        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage"
+        "claim.view", "claim.initiate", "claim.cancel", "dependant.manage","view.standing","manage.standing"
     ],
     Secretary: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -47,7 +47,8 @@ const MATRIX = {
         "member.register", "member.amend", "member.revealId", "member.assignRole",
         "governance.record", "assistant.ask",
         "payout.view", "queue.requestSwap", "queue.consentSwap",
-        "distribution.view", "claim.view", "dependant.manage"
+        "distribution.view", "claim.view", "dependant.manage",
+        "view.standing", "manage.standing"
     ],
     Chairperson: [
         "view.dashboard", "view.ownStatement", "view.queue", "view.constitution",
@@ -71,7 +72,8 @@ const MATRIX = {
         "member.register", "member.amend", "member.assignRole",
         "member.exitApprove",
         "governance.record", "constitution.propose",
-        "assistant.ask"
+        "assistant.ask",
+        "view.standing", "manage.standing"
     ],
 
     // BR-10. The Platform Administrator provisions and suspends clubs and can

@@ -1,12 +1,12 @@
 "use strict";
 
 /**
- * Standing engine: gathers each member's position, asks the rules what should
- * happen, saves it and records it. REQ-44, REQ-101 to REQ-103.
+ * Standing engine service. REQ-44, REQ-101 to REQ-103.
  *
- * Nothing here runs by itself; an officer starts a check (see the route).
- * Expulsion is never applied yet: it needs a resolution (T5, Governance), so
- * expulsionApproved is always false and those members are reported instead.
+ * An officer starts a check (see standing.routes.js); nothing here runs by
+ * itself. Every change from one check happens in ONE transaction, so a check
+ * applies completely or not at all. Expulsion is never applied yet: it needs a
+ * resolution (T5, Governance), so those members are reported instead.
  */
 
 const { withClubTransaction } = require("../../db/tx");
@@ -15,10 +15,11 @@ const { versionInForce } = require("../../rules/versioning");
 const { evaluateStanding } = require("../../rules/standing");
 const repo = require("./standing.repo");
 
-async function runStandingCheck(clubId, { actorUserId = null, today = todayIso() } = {}) {
-    return withClubTransaction(clubId, async (db) => {
-        const versions = await repo.listConstitutionVersions(db, clubId);
+async function runStandingCheck(db, { actor = null, audit = null, today = todayIso() } = {}) {
+    const outcome = await withClubTransaction(db.clubId, async (tx) => {
+        const versions = await repo.listConstitutionVersions(tx, tx.clubId);
         const inForce = versionInForce(versions, today);
+
         if (!inForce) {
             return { ran: false, reason: "no_constitution_in_force", changes: [], awaitingResolution: [] };
         }
@@ -33,10 +34,14 @@ async function runStandingCheck(clubId, { actorUserId = null, today = todayIso()
                 awaitingResolution: []
             };
         }
-        const thresholds = { warningAfterMissed, suspensionAfterMissed, expulsionAfterMissed };
+        const thresholds = {
+            warningAfterMissed: Number(warningAfterMissed),
+            suspensionAfterMissed: Number(suspensionAfterMissed),
+            expulsionAfterMissed: Number(expulsionAfterMissed)
+        };
 
-        const members = await repo.listMemberPositions(db, clubId, {
-            graceDays: inForce.gracePeriodDays,
+        const members = await repo.listMemberPositions(tx, tx.clubId, {
+            graceDays: Number(inForce.gracePeriodDays || 0),
             today
         });
 
@@ -60,24 +65,19 @@ async function runStandingCheck(clubId, { actorUserId = null, today = todayIso()
             if (!result.changed) continue;
 
             // If someone changed this member in the meantime, leave it alone.
-            const moved = await repo.updateStanding(db, clubId, m.memberId, m.standing, result.standing);
+            const moved = await repo.updateStanding(tx, tx.clubId, m.memberId, m.standing, result.standing);
             if (!moved) continue;
 
-            await repo.recordChange(db, {
-                clubId,
+            await repo.recordChange(tx, {
+                clubId: tx.clubId,
                 memberId: m.memberId,
                 from: m.standing,
                 to: result.standing,
                 reason: `${result.action}: ${result.reason}`,
-                changedOn: today,
-                changedBy: actorUserId
+                changedOn: result.changedOn,
+                changedBy: actor ? actor.userId : null
             });
-            changes.push({
-                memberId: m.memberId,
-                from: m.standing,
-                to: result.standing,
-                action: result.action
-            });
+            changes.push({ memberId: m.memberId, from: m.standing, to: result.standing, action: result.action });
         }
 
         return {
@@ -88,10 +88,24 @@ async function runStandingCheck(clubId, { actorUserId = null, today = todayIso()
             awaitingResolution
         };
     });
+
+    if (audit) {
+        for (const c of outcome.changes) {
+            await audit("standing.change", "Success", {
+                detail:
+                    `${actor ? actor.fullName : "The system"} ran a standing check: ` +
+                    `a member moved from ${c.from} to ${c.to} (${c.action}).`,
+                targetType: "member",
+                targetId: c.memberId
+            });
+        }
+    }
+
+    return outcome;
 }
 
-async function standingHistory(clubId, { memberId = null, limit = 100 } = {}) {
-    return withClubTransaction(clubId, (db) => repo.listChanges(db, clubId, { memberId, limit }));
+async function standingHistory(db, { memberId = null, limit = 100 } = {}) {
+    return repo.listChanges(db, db.clubId, { memberId, limit });
 }
 
 module.exports = { runStandingCheck, standingHistory };

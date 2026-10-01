@@ -75,7 +75,8 @@ const TENANT_SCOPED_TABLES = [
     "queue_arrears_decision",
     "distribution",
     "burial_claim",
-    "proof_of_payment"
+    "proof_of_payment",
+    "standing_change"
 ];
 
 const TABLE_PATTERN = new RegExp(
