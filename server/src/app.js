@@ -26,7 +26,11 @@ const cors = require("cors");
 const { env } = require("./config/env");
 const { attachAudit } = require("./middleware/audit");
 const { loadActor } = require("./middleware/authenticate");
-const { notFoundHandler, errorHandler, asyncRoute } = require("./middleware/errors");
+const {
+  notFoundHandler,
+  errorHandler,
+  asyncRoute,
+} = require("./middleware/errors");
 const { healthcheck } = require("./db/pool");
 
 const authRoutes = require("./modules/auth/auth.routes");
@@ -40,63 +44,76 @@ const memberRoutes = require("./modules/members/members.routes");
 const contributionRoutes = require("./modules/contributions/contributions.routes");
 const ledgerRoutes = require("./modules/ledger/ledger.routes");
 const platformRoutes = require("./modules/platform/platform.routes");
-const assistantRoutes = require("./modules/assistant.routes");
+
+
 const standingRoutes = require("./modules/standing/standing.routes");
+const assistantRoutes = require("./modules/assistant/assistant.routes");
+
 
 function createApp() {
-    const app = express();
+  const app = express();
 
-    // Behind a proxy (Render, Railway, Fly) this makes req.secure and the
-    // X-Forwarded-For address trustworthy, which the audit log depends on.
-    app.set("trust proxy", 1);
-    app.disable("x-powered-by");
+  // Behind a proxy (Render, Railway, Fly) this makes req.secure and the
+  // X-Forwarded-For address trustworthy, which the audit log depends on.
+  app.set("trust proxy", 1);
+  app.disable("x-powered-by");
 
-    // 1. CORS. The web app runs on a different origin, so the cookie is
-    //    cross-origin and the origin must be named exactly — a wildcard is not
-    //    permitted alongside credentials.
-    app.use(cors({
-        origin: env.WEB_ORIGIN,
-        credentials: true,
-        methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
-    }));
+  // 1. CORS. The web app runs on a different origin, so the cookie is
+  //    cross-origin and the origin must be named exactly — a wildcard is not
+  //    permitted alongside credentials.
+  app.use(
+    cors({
+      origin: env.WEB_ORIGIN,
+      credentials: true,
+      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    }),
+  );
 
-    // 2, 3.
-    app.use(express.json({ limit: "1mb" }));
-    app.use(cookieParser());
+  // 2, 3.
+  app.use(express.json({ limit: "1mb" }));
+  app.use(cookieParser());
 
-    // 4, 5.
-    app.use(attachAudit);
-    app.use(loadActor);
+  // 4, 5.
+  app.use(attachAudit);
+  app.use(loadActor);
 
-    // Liveness. Useful on demonstration day: if this returns, the server is up
-    // and the database is reachable, and you know immediately which half of the
-    // system is the problem.
-    app.get("/api/health", asyncRoute(async (req, res) => {
-        const db = await healthcheck();
-        res.json({ ok: true, service: "stokvel-admin-system", database: db });
-    }));
+  // Liveness. Useful on demonstration day: if this returns, the server is up
+  // and the database is reachable, and you know immediately which half of the
+  // system is the problem.
+  app.get(
+    "/api/health",
+    asyncRoute(async (req, res) => {
+      const db = await healthcheck();
+      res.json({ ok: true, service: "stokvel-admin-system", database: db });
+    }),
+  );
 
-    // 6. Feature routes. Others are mounted here as each step lands.
-    app.use("/api/auth", authRoutes);
-    app.use("/api/club", clubRoutes);
-    app.use("/api/constitution", constitutionRoutes);
-    app.use("/api/payouts", payoutRoutes);
-    app.use("/api/queue", queueRoutes);
-    app.use("/api/distributions", distributionRoutes);
-    app.use("/api/claims", claimRoutes);
-    app.use("/api/members", memberRoutes);
-    app.use("/api/cycles", contributionRoutes.cycles);
-    app.use("/api/contributions", contributionRoutes.contributions);
-    app.use("/api/ledger", ledgerRoutes);
-    app.use("/api/platform", platformRoutes);
-    app.use("/api/assistant", assistantRoutes);
-    app.use("/api/standing", standingRoutes);
-    
-    // 7, 8.
-    app.use(notFoundHandler);
-    app.use(errorHandler);
+  // 6. Feature routes. Others are mounted here as each step lands.
+  app.use("/api/auth", authRoutes);
+  app.use("/api/club", clubRoutes);
+  app.use("/api/constitution", constitutionRoutes);
+  app.use("/api/payouts", payoutRoutes);
+  app.use("/api/queue", queueRoutes);
+  app.use("/api/distributions", distributionRoutes);
+  app.use("/api/claims", claimRoutes);
+  app.use("/api/members", memberRoutes);
+  app.use("/api/cycles", contributionRoutes.cycles);
+  app.use("/api/contributions", contributionRoutes.contributions);
+  app.use("/api/ledger", ledgerRoutes);
+  app.use("/api/platform", platformRoutes);
+  app.use("/api/assistant", assistantRoutes);
+  app.use("/api/standing", standingRoutes);
+  app.use("/api/governance", require("./modules/governance/governance.routes"));
 
-    return app;
+  for (const name of ["beneficiaries", "announcements", "exits", "dashboard"]) {
+    app.use(`/api/${name}`, require(`./modules/${name}/${name}.routes`));
+  }
+
+  // 7, 8.
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+
+  return app;
 }
 
 module.exports = { createApp };

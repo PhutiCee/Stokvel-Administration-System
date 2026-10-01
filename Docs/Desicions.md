@@ -794,3 +794,392 @@ the way the ledger, a payout or a claim is.
 **Held in memory, never on disk:** `multer` is configured with
 `memoryStorage`, so an upload exists only for the length of the request and
 there is no temp file to clean up.
+
+---
+
+## 36. Governance freezes attendance and the constitutional rules used for a vote
+
+**Historical implementation note:** the assumed majorities and single-class model
+below are superseded by decision 37 and migration 017. They describe the first
+handoff, not the current voting workflow.
+
+REQ-104 to REQ-109 and REQ-32 are implemented by migration 016, the governance
+module and `/governance`. A Secretary or Chairperson records a completed meeting;
+only the Chairperson submits constitutional amendments and gives carried decisions
+effect. Club members can read meeting records. Platform administrators cannot.
+Attendance is unique, club-scoped and checked against join/exit dates. Suspended
+and in-arrears memberships remain part of the active membership denominator;
+Exited/Expelled memberships without an exit date cannot be reconstructed safely
+and are excluded. The eligible count, attendees, quorum count and constitution
+version are frozen at recording time; later changes do not rewrite that meeting.
+Historical role/standing changes without dates are not reconstructed.
+
+Quorum rounds up. Every attendee must be accounted for in the vote totals,
+including abstentions. A non-quorate meeting always produces advisory resolutions;
+they can be recorded but never applied. General and expulsion motions require
+more than half of everyone present to vote in favour; ties fail and abstentions
+cannot manufacture a majority. Meeting, attendance and resolution records are
+immutable, apart from the one-time application marker on a carried resolution.
+Correct errors by recording a new, explicitly corrective record.
+
+**Unspecified amendment threshold:** REQ-109 refers to a constitutional majority
+but neither the supplied SRS nor the previous schema specifies a value or distinct
+amendment classes. This implementation treats supported parameter amendments as
+one class and adds `amendment_majority_percentage` to each constitution version.
+The conservative initial value is 100% of attendees (unanimity), not an invented
+simple majority. A carried amendment can change it to a whole percentage from
+51 to 100. The existing threshold governs the vote that changes the threshold.
+The UI displays the meeting's version and required percentage. The group should
+confirm this default against the actual club constitutions; additional amendment
+classes would need explicit requirements.
+
+A resolution stores the exact changes and effective date voted on. Applying it
+calls `createNewVersion()` inside the same transaction as the application marker.
+A second application, stale constitution baseline or effective date in the past
+is refused. An intervening amendment needs a fresh resolution, never silent
+rebasing of the members' vote. Existing contribution-cycle selection issues in
+T2 remain separate and are not claimed fixed by this governance work.
+
+Expulsion needs a carried resolution, preserves membership/ledger history, records
+the exit date and closes the queue gap in one transaction. It refuses to remove
+the last Chairperson or Treasurer until a replacement exists (REQ-49). Expelled
+members cannot switch back into the club or retain permissions through an existing
+session. Defaulter thresholds and automatic stage advancement remain T7, assigned
+separately; governance does not invent those thresholds.
+
+`npm run test:governance` runs the migrations and real services/HTTP middleware in
+an isolated PGlite PostgreSQL engine. It needs no credentials and never connects
+to, truncates or rebuilds the shared Supabase database. It proves transaction
+rollback, constraints, tenant isolation, role checks and expulsion behaviour.
+It does not claim to test distributed concurrency or Supabase network behaviour.
+
+
+---
+
+## 37. Confirmed voting rules, pending proposals and officer succession
+
+This completes the T5 workflow against REQ-32 and REQ-104–109. The annual report
+in REQ-110 is also implemented. Notifications, the automatic defaulter pipeline
+and reconciliation capture remain with their assigned developers.
+
+**No invented majority.** The SRS refers to a majority for each amendment class
+but does not specify those classes, numbers, denominators or voting rights.
+The Chairperson records the rules already adopted in the club's constitution,
+with a source clause, effective date and explicit attestation. This one-time
+capture is immutable and audited. It is not permission to invent or change rules.
+If no adopted rules exist, the group/club must settle them before using binding
+governance; the application does not silently use 100% or a simple majority.
+The old `amendment_majority_percentage` column remains solely for compatibility;
+new decisions use the confirmed policy snapshot instead.
+
+The recorded policy specifies the General and Expulsion rules, the names and
+field coverage of amendment classes, and voting rights for suspended and in-arrears
+members. Parameters are limited to the actual club type. Each applicable parameter
+belongs to exactly one class. Fractions are exact: at least 2/3 of three voters
+means two votes, while more than 2/3 means three. The policy specifies whether the
+denominator is eligible attendees, votes cast excluding abstentions, or the full
+eligible electorate. An amendment spanning classes must satisfy all their rules.
+Quorum continues to use active membership as REQ-25 specifies; voting entitlement
+is recorded separately. Every eligible attendee is counted once in the tally.
+Future policy changes themselves require a proposal and a carried resolution under
+the existing policy; an officer cannot lower the threshold before voting.
+
+**Pending stage.** The Chairperson submits an immutable proposal before its vote.
+Submitting does not create a constitution version. A Secretary or Chairperson
+records the vote against that exact proposal at a meeting governed by the same
+version. Advisory votes leave it pending; rejection is a binding outcome requiring
+a new proposal to try again. A carried proposal can be applied once. The proposal's
+text, parameter values and effective date cannot be replaced when recording votes
+or applying them. Stale baselines and expired effective dates require a new proposal.
+
+**Succession.** An expulsion resolution can name an ordinary member in good standing
+to replace the officer. That identity and the subject's role are frozen in the vote.
+Application rechecks them, removes the expelled member from the queue, ends their
+membership and transfers the office in one transaction. If no replacement is named
+for the last Chairperson/Treasurer, recording/application is refused. Any failure
+rolls the whole operation back. The Secretary can record this vote, but only the
+Chairperson can apply it, consistent with the current permission model.
+
+**Historical evidence.** Membership status/role changes are captured automatically
+from migration 017 onward, including changes made by other modules. Meeting records
+freeze the eligible roster, actual attendance, voter counts and policy. For a past
+date, recorded member history at that South African day's end is used. Dates before
+the available history are refused rather than reconstructed from today's standing.
+Old meeting/resolution records remain readable. Unapplied legacy votes based on the
+assumptions from decision 36 cannot be applied; use a new meeting under confirmed
+rules. Already applied historical records are not rewritten.
+
+## 38. Constitutional amendments govern new cycles by commencement
+
+REQ-33 is now enforced for newly opened contribution cycles: an amendment is
+selected only when its effective date is strictly before the cycle commencement.
+The founding version can apply on its own effective date. Opening is permitted
+only on or after commencement. Each new cycle pins the selected constitution ID,
+which cannot later change; contribution amount, grace and penalty evaluation use
+that pinned version. Opening takes the same club lock as constitutional amendments.
+
+Migration 017 pins pre-existing cycles using the former due-date lookup, preserving
+the version that the earlier application would read when the migration runs. It
+never rebills them, changes captured money or guesses which version was originally
+used if that information was never stored. Historical monetary discrepancies, if
+any exist, need explicit ledger corrections, not an automatic rewrite.
+
+Calendar dates in the contribution repository travel as text. Input dates are
+validated, and grace expires at the end of the South African calendar day regardless
+of the server timezone. The previous timezone-sensitive fixture now states +02:00
+explicitly. Tests run under UTC, Africa/Johannesburg and America/Los_Angeles.
+
+## 39. Annual report uses the ledger and labels incomplete reconciliation
+
+REQ-110 is exposed as a read-only report on Governance for roles with `view.ledger`.
+It includes opening and closing pool balances, net contributions, net penalties,
+net payouts/claims, other net movements and membership movement. Reversals are
+classified against their original entry, including corrections posted in a later
+year. South African midnight defines calendar-year boundaries. Current-year reports
+are explicitly year-to-date. Monetary values remain decimal strings/integer cents.
+All report queries run in one SQL statement for one consistent snapshot.
+
+The report reads the latest reconciliation on/before its cut-off and shows its
+actual date. Missing records, a record older than the cut-off and a non-zero
+difference are shown explicitly; it never assumes that a stale bank balance is a
+year-end verification. Memberships with an ended standing but no exit date are
+excluded from movement counts and disclosed as unverifiable. This read-only view
+does not implement or modify the separately assigned reconciliation capture flow.
+
+Validation: 254 unit tests; isolated PostgreSQL migration-upgrade, service and HTTP
+checks; production build; browser checks for proposal, meeting, vote and application.
+The isolated engine does not prove multi-instance concurrency or Supabase networking.
+
+
+## 40. Complete the existing contributions and negotiated queue screens
+
+30 September 2026. Implements remaining-work T3, using the existing permissions,
+shared UI components and module structure. No migration or financial rule change.
+
+Proof evidence (REQ-53) is attached only after a positive contribution has been
+captured. The Treasurer may upload, replace or remove one file. Replacement and
+removal ask for confirmation. JPEG/PNG/PDF, non-empty content and the existing 5 MB
+limit are checked; server checks a matching file signature as well as declared MIME
+(this is not a full document parser or malware scanner). Multipart errors return a
+readable 400. Download responses use private/no-store caching, attachment filenames
+and binary bytes; the authenticated frontend offers local View and Download links.
+
+Proof read access previously accepted any member of the club. It now matches the
+contribution register: Chairperson, Secretary and Treasurer can read the club's
+records; ordinary members can read only their own. The new penalty register uses
+that same visibility rule, with 50 rows per page and stable ordering. Only the
+Chairperson can waive, still using the original waiver service and recorded reason;
+the original penalty and immutable ledger history remain. This adds no general
+ledger reversal operation and no defaulter processing.
+
+The cycle selector uses the existing latest-24-cycle history API, including closed
+cycles, so recent proof is accessible when no cycle is open. Older cycles remain
+available by their existing API identifier; unlimited history browsing is not added.
+
+For Negotiated order, the Chairperson gets the same active candidates used by the
+existing establishment service, including suspended/in-arrears members as that
+service already specifies. Up/Down controls support keyboard and touch. An explicit
+checkbox confirms the club's agreed order; it is a UI acknowledgement, not a new
+voting resolution requirement. The existing server rejects missing, duplicate,
+foreign or stale membership lists. Eligibility for actual payout remains separate.
+Random draw and Seniority retain their existing establishment behaviour.
+
+Isolated authenticated HTTP tests are committed in `server/integration/screens.js`.
+They cover file bytes, replacement/removal, limits, captured-only enforcement,
+role/owner/tenant restrictions, penalty paging/waiver/reversal, and negotiated-order
+validation. Run with `node server/integration/screens.js`; no external database is
+used. Existing governance tests remain separate and unchanged.
+
+A remaining test timestamp in the no-grace boundary fixture now explicitly uses
++02:00. Its previous timezone-free string meant a different instant on hosts east
+of South Africa. Production date and penalty rules are unchanged in this update.
+
+Excluded by assignment: REQ-3, REQ-11, REQ-58, REQ-100, REQ-101–103, notifications,
+and Reconciliation (Use Case 5). No code for those features is introduced here.
+
+
+## 41. Consistent South African date handling
+
+30 September 2026. PostgreSQL DATE parsing now preserves YYYY-MM-DD text, and
+connections request Africa/Johannesburg as their SQL session timezone. Timestamps
+remain instants. This also aligns CURRENT_DATE defaults and date comparisons with
+the club's South African day. Report/distribution timestamp boundaries explicitly
+use Africa/Johannesburg. No old records are re-dated.
+
+Browser formatters preserve date-only values and display timestamps in South African
+time, independently of the device timezone. Contribution, member, claim and platform
+form defaults use the South African day. Member join dates and platform dates reject
+impossible calendar input. Catch-up compares calendar strings and takes the amount
+from the open cycle's pinned constitution, preserving REQ-33's cycle boundary.
+
+Evidence: date-display unit checks in UTC, South Africa, Los Angeles and Kolkata;
+DATE parser, SA midnight and API calendar-date checks in ledger-reversals integration.
+The configured deployment's PostgreSQL/proxy connection should also be checked with
+its normal configuration; the automated database checks use an isolated engine.
+
+## 42. General ledger corrections and payout reversal approval
+
+30 September 2026. Migration 018 introduces immutable reversal requests and database
+guards on new reversals. Treasurer posts a correction of equal and opposite amount,
+linked to the original, with a reason. A payout (including distribution and burial
+payouts, plus the legacy Claim entry type) needs a recorded Chairperson decision
+first. Approval changes no money: a Treasurer subsequently posts the exact approved
+request. A requester cannot approve their own request; an approver cannot post it.
+Rejected requests remain visible and can be followed by a new request. Posted
+requests are final. Duplicate reversals and reversals of reversals are refused.
+
+Posting locks the club and commits the request update and ledger entry together.
+The database checks equal/opposite amounts, matching club/member/source identifiers,
+reason and prior payout approval. Existing ledger entries are never changed.
+Service auditing records success/refusal; API permissions remain authoritative.
+
+DOCUMENT CONFLICT: REQ-63 explicitly gives penalty waiver to the Chairperson and
+requires a reversing entry. REQ-92 says only Treasurer posts reversing entries.
+We preserve the already-implemented REQ-63 exception: the general ledger action
+refers penalties to the dedicated waiver flow so the penalty flag and ledger stay
+consistent. The group should record this exception explicitly in the SRS.
+
+SCOPE: correcting a ledger entry does not mean undoing a business process. This
+implementation does not reconstruct contribution allocations/credits, rewind a
+rotating queue or reopen approved claims/payouts. Those operations need separate
+compensation rules and source allocation history. The screen states this boundary;
+do not claim that reversal cancels the original process. Ledger/pool and annual
+report totals incorporate reversals; source-based contribution/distribution inputs
+are not automatically restated by this operation. Review this boundary before
+using ledger corrections to fix incorrectly captured operational data.
+
+Evidence: isolated real HTTP/database tests in `server/integration/ledger-reversals.js`
+cover permissions, pending/approval/posting, unchanged balance at approval, exact
+opposing amounts, rejection/retry, database guards, history immutability, duplicate
+and tenant refusals, and rollback after insertion. Existing governance and screen
+integration tests also pass. No shared database was migrated or branch pushed.
+
+
+## Decision 43 — Membership completion and dashboard evidence (30 September 2026)
+
+REQ-36 uses integer hundredths of a percentage, not a floating-point tolerance.
+Replacement of the member's nominations is one club-locked transaction. All club
+roles may nominate their own beneficiaries; platform administrators may not.
+
+REQ-129–135 announcements are immutable records. Corrections are new records with
+a same-club foreign key and are displayed alongside the original. Paging is newest
+first. Chairperson/Secretary may publish. REQ-132 channel dispatch remains with the
+notification owner; reading announcement rows is the integration boundary, not a
+claim that messages have been delivered.
+
+Exit rules are free text, not an executable policy. Chairperson may record an
+immutable mapping ONLY when its calculation exactly represents the adopted rule.
+The supported sequence is: selected-period contribution ledger receipts minus prior
+payouts if selected (floor zero), unpaid penalties if selected, proportionate costs
+if selected, then percentage forfeiture. Costs use the member's net contribution
+share of club net contributions in that period. Fractional cents are rounded DOWN;
+deductions never exceed remaining gross entitlement. Negative net period inputs
+require review. Periods are membership, notice calendar year or constitution cycle
+start. Rules with other conditions, paid-penalty deductions, another rounding rule,
+or another cost-sharing basis are unsupported. In particular, the seed's
+"before completing one full rotation" condition is NOT represented by selecting 10%.
+Do not attest to a partial mapping. A mapping correction requires a new adopted
+constitution version; previous notices retain their version and calculation evidence.
+
+REQ-45–46: notice submission records an initial calculation. A Treasurer refreshes
+it for approval; a different current Chairperson approves, after the notice period.
+Approval recomputes inputs and refuses stale assessments. Repayment, retained
+forfeiture evidence, deduction settlement, queue removal and exit history commit
+atomically. An approved Exit settlement payout provides two-account evidence for
+positive repayments. Zero repayment creates no zero-valued payout, but still records
+forfeiture evidence. Penalty deductions increase settled_amount, without posting
+another receipt. The member and prior transactions are retained. Last-officer,
+queue-head arrears, pending payout and insufficient-pool safeguards apply.
+
+ACCOUNTING DECISION REQUIRING GROUP REVIEW: forfeiture retains existing money; it
+is recorded as a zero-value Adjustment with the retained amount in its description
+and the immutable assessment. Posting a positive forfeiture receipt would count the
+same cash twice. The SRS does not specify a separate forfeiture ledger category.
+The implementation records it only at approval without changing cash twice.
+
+HISTORICAL GAP (resolved by decision 44 and migration 020 below): REQ-47 also allows express write-off by resolution. That alternative
+is NOT implemented. The existing General resolution text cannot safely authorise a
+specific member/debt amount. A future structured resolution and obligation allocation
+must agree with the contribution/defaulter module; do not fabricate a cash capture to
+clear debt. Until then the queue head with arrears cannot exit.
+
+EXISTING LEDGER BOUNDARY: contribution ledger receipts include excess payments and
+credits; source allocations are not reconstructed after reversals (decision 42).
+Settlement policy mapping does not repair that history. Cases requiring separation
+of paid penalties, credits or reversed allocations need accounting review before
+approval. No arbitrary interpretation of a free-text constitution is supplied.
+
+REQ-111–118: financial dashboard indicators are calculated from exactly the rows
+returned in their expandable detail. Multiple reads run in a READ ONLY REPEATABLE
+READ transaction. Member responses contain only that member's detailed finances;
+Treasurer/Chairperson see club financial records. Queue projection reuses queue.service.
+The 12-month series uses the previous 12 COMPLETED SA calendar months, while current
+month cards cover the current month. Reversals retain the original entry category.
+No reconciliation is represented as "Not recorded", not a falsely balanced result.
+Missing defaulter stages are explicitly labelled unavailable, not zero.
+
+DOCUMENT CONFLICT: REQ-112 describes penalties among expenses, but the current
+ledger posts penalty assessments positively (and cash collection is recorded as
+Contribution). The dashboard follows those existing ledger signs and displays
+penalty entries separately. It is a ledger movement report, not a newly certified
+cash-flow statement. The group must reconcile terminology and accounting rules.
+
+Verification: 261 unit tests; isolated authenticated HTTP/database integration for
+beneficiaries, announcements, exit settlement, stale assessment, insufficient funds,
+last officer, queue-head safeguards and dashboard privacy. Existing governance,
+screens and reversal integration suites passed; production build and imports passed.
+Interactive browser verification was unavailable: the browser executable was missing
+and its download failed. The supplied manual walkthrough remains an acceptance task.
+
+
+## Decision 44 — Exact debt write-off and platform aggregate detail (1 October 2026)
+
+This supersedes decision 43's outstanding REQ-47 gap and its platform drill-through
+limitation. A Chairperson/Secretary can record a General resolution whose immutable
+payload identifies an exit notice, member, every affected contribution, expected
+amount, captured amount, prior written-off amount and exact debt total. The source
+rows must match the snapshot displayed before submission. The existing constitution's
+General voting rule and meeting quorum determine the result; no new majority is
+invented. The resolution text explicitly states the amount, member and notice.
+
+Because captured contribution history does not reconstruct arbitrary past balances,
+these snapshot votes must be recorded ON the meeting date in South African time.
+A backdated debt vote is refused instead of using today's debt as past evidence.
+If the club constitution specifies a special debt-write-off majority, this General-rule
+workflow must not be used until that separate rule is supported. Do not change the
+General majority merely to fit one debt clause.
+
+A carried resolution does not independently forgive debt. It is consumed only in
+the matching exit approval transaction, after Treasurer assessment, notice-period,
+last-officer and funding checks. Debts must still match every recorded amount. Any
+payment, new obligation or cancelled/replaced notice invalidates the old snapshot;
+a fresh vote is needed. Advisory, rejected, applied and wrong-member resolutions are
+refused. This completes REQ-47's settle-or-expressly-write-off alternatives.
+
+Contribution.expected_amount and captured_amount are preserved. A separate immutable
+contribution_writeoff allocation and written_off_amount record forgiven debt. Net
+outstanding is greatest(expected_amount - captured_amount - written_off_amount, 0).
+The cash ledger receives a ZERO Adjustment describing the debt and resolution; it
+receives no invented Contribution or Expense. Exit approval, resolution application,
+allocations, repayment and Exited status commit together. A deferred database guard
+refuses allocations without the matching approved exit. Source money cannot be
+rewritten after write-off, and new captures for ended memberships are refused.
+
+Integration handoff: the defaulter and batch-capture owners must use the net
+outstanding formula and skip Exited/Expelled memberships. They retain ownership of
+those modules. Existing statement/member/payout/dashboard/club-selection balance
+queries are updated. Assistant code has ONLY the same outstanding-balance SQL change;
+no assistant behaviour, prompts or feature implementation has been replaced.
+
+Platform detail remains aggregate under REQ-19/20. Its member count is the sum of
+non-ended standing buckets, and its funds figure is the sum of platform-wide ledger
+category totals (including reversals in their original category). The same returned
+rows power the figures and their expandable details. Club names/statuses remain
+visible for administration; club/member financial records are never returned. A
+read-only repeatable-read transaction keeps stats and club list consistent.
+
+Evidence: new authenticated HTTP/isolated-database tests cover exact snapshot votes,
+advisory/rejected/wrong-member/stale refusals, failure AFTER write-off allocation with
+full rollback, final cash balance, preserved original source money, blocked recapture,
+immutable allocations and platform aggregate/privacy boundaries. Existing governance,
+screens, reversal and completion suites pass. Browser acceptance remains manual.

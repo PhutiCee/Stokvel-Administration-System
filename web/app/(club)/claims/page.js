@@ -1,4 +1,5 @@
 "use client";
+import { todayIso } from "@/lib/format";
 
 /**
  * Burial claims. Use Case 4. REQ-37, REQ-83 to REQ-88.
@@ -295,7 +296,7 @@ function RegisterDependantDialog({ categories, onClose, onSubmit }) {
 
 function LodgeClaimDialog({ dependants, onClose, onSubmit }) {
   const [dependantId, setDependantId] = useState(dependants[0]?.dependantId || "");
-  const [dateOfDeath, setDateOfDeath] = useState(new Date().toISOString().slice(0, 10));
+  const [dateOfDeath, setDateOfDeath] = useState(todayIso());
   const [description, setDescription] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);

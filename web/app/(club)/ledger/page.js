@@ -10,8 +10,12 @@
  * having, and exactly what a gap in it would reveal.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AlertCircle, BookOpen } from "lucide-react";
+import { useSession } from "@/lib/session";
+import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReversalRequests from "@/components/ledger/ReversalRequests";
 import { PageHeader } from "@/components/shell/ClubShell";
 import { Card, Badge, Alert, Loading, Empty } from "@/components/ui/States";
 import { ledger as api, ApiError } from "@/lib/api";
@@ -29,20 +33,22 @@ const TYPE_TONE = {
 };
 
 export default function LedgerPage() {
+  const {can}=useSession();
+  const [reversing,setReversing]=useState(null);
+  const [requests,setRequests]=useState([]);
+  const [notice,setNotice]=useState("");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const c = new AbortController();
-    api
-      .list(100, { signal: c.signal })
-      .then(setData)
-      .catch((err) => {
-        if (err.name === "AbortError") return;
-        setError(err instanceof ApiError ? err.message : "Could not load the ledger.");
-      });
-    return () => c.abort();
-  }, []);
+  const load=useCallback(async(signal)=>{
+    const [book,pending]=await Promise.all([api.list(100,{signal}),api.reversals({signal})]);
+    if(signal?.aborted)return;
+    setData(book);setRequests(pending.requests);setError(null);
+  },[]);
+  useEffect(()=>{
+    const c=new AbortController();load(c.signal).catch(err=>{if(!c.signal.aborted)setError(err.message);});
+    return ()=>c.abort();
+  },[load]);
 
   if (error) {
     return <Alert tone="exception" icon={AlertCircle} title="Could not load the ledger">{error}</Alert>;
@@ -63,6 +69,17 @@ export default function LedgerPage() {
           </div>
         }
       />
+
+      {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
+      <ReversalRequests requests={requests} onChanged={()=>load()} />
+      {reversing && <ConfirmDialog title={['Payout','Claim'].includes(reversing.entryType)?"Request payout reversal":"Reverse ledger entry"}
+        description={`Original: ${money(reversing.amount)}. An equal and opposite entry will be posted${['Payout','Claim'].includes(reversing.entryType)?' only after Chairperson approval and a Treasurer confirms posting':''}. Operational records and allocations are not undone.`}
+        confirmLabel={['Payout','Claim'].includes(reversing.entryType)?"Request approval":"Post reversal"}
+        onClose={()=>setReversing(null)} onConfirm={async reason=>{
+          const result=await api.reverse(reversing.entryId,reason);
+          setNotice(result.status==='Pending'?'Requested: awaiting Chairperson approval.':'Reversing entry posted.');
+          await load();
+        }} />}
 
       {data.entries.length === 0 ? (
         <Card>
@@ -105,6 +122,11 @@ export default function LedgerPage() {
                           Posted by {e.postedByName}
                           {e.reference ? ` · ${e.reference}` : ""}
                         </p>
+                        {e.reversedBy && <p className="text-xs mt-1">Already reversed</p>}
+                        {e.reversesId && <p className="text-xs mt-1 break-all">Reverses entry {e.reversesId}</p>}
+                        {can("ledger.reverse") && !e.reversedBy && !e.reversesId && !['Reversal','Penalty'].includes(e.entryType) &&
+                          !requests.some(r=>r.entry_id===e.entryId && r.status!=='Rejected') &&
+                          <Button size="sm" variant="secondary" className="mt-2" onClick={()=>setReversing(e)}>{['Payout','Claim'].includes(e.entryType)?'Request reversal':'Reverse'}</Button>}
                         {e.reason && (
                           <p className="text-[12px] text-exc-700 mt-0.5">Reason: {e.reason}</p>
                         )}

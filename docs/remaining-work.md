@@ -1,12 +1,19 @@
 # Remaining work - Stokvel Administration System (Group 5, SCSC082)
 
 Written 28 September 2026, from the SRS, `docs/traceability.md` and the code as it
-stands. Code freeze is 29 September and the portfolio is due 1 October. The final
-presentation needs "all 7 use cases demonstrable live", so use cases 5 and 7 are the
-biggest gaps.
+stands. Code freeze is 29 September and the portfolio is due 1 October. Updated after
+the governance implementation on 29 September: UC5 remains the missing use case;
+UC7 is implemented below. Other members retain their existing assignments.
 
 Every requirement below was checked against the actual code, not just against
 `traceability.md`, which turned out to be incomplete (see section 6).
+
+## Update — 30 September 2026
+
+Membership/communications delivery: beneficiaries and immutable announcements are
+implemented; mapped exit settlements and role dashboard detail are available with the
+explicit gaps below. The system is NOT fully SRS-complete. Teammate assignments in
+section 4.5 are unchanged. Integration commands: `npm run test:completion` and `npm run test:exit-writeoffs`.
 
 ## 1. Where we are
 
@@ -17,13 +24,15 @@ Every requirement below was checked against the actual code, not just against
 | UC3 Payouts (rotation, distribution) and the rotating queue | Built, backend and web pages |
 | UC4 Burial claims and dependants | Built, backend and web pages |
 | UC5 Reconciliation | **Not built** (table exists with one seeded row) |
-| UC6 Assistant | Assigned to another member |
-| UC7 Governance | **Not built** (no tables) |
+| UC6 Assistant | Implementation added on `racha`; owned by another member, not audited in this governance change |
+| UC7 Governance | **Built:** meetings, quorum, resolutions, amendments and resolution-based expulsion; see decision 36 |
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
 (REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
-Tests: 243 automated tests pass with no database (`npm test`), imports resolve
-(`npm run check`). Next free migration number: **016**.
+Tests: 261 automated tests pass with timezone-independent calendar rules,
+plus `npm run test:governance`
+for isolated database/HTTP checks. Imports resolve
+(`npm run check`). Next free migration number: **021** (016–017 governance; 018 ledger reversals; 019 membership and announcements; 020 exit write-offs).
 
 ## 2. How to work on any task
 
@@ -62,23 +71,28 @@ can re-run them and a marker cannot see the evidence. Move them into
 runs them. They are not repeatable on a used database, so the runner must rebuild
 first.
 
-**T2. Fix known defects.** (S)
-- `iso()` in `contributions.service.js` turns 2024-11-20 into 2024-11-19 on a server
-  in South African time, and it decides which constitution version a penalty uses
-  (decision 19). Use `lib/dates.js` and select dates `::text`.
-- REQ-33: the code picks the constitution version by each cycle's due date, but the
-  SRS says the first cycle that commences after the effective date.
-- Documentation numbering, see section 6.
+**T2. Known defects — date/cycle items completed in migration 017.**
+Calendar dates are selected as text, input dates are validated, and South African
+calendar-day rules no longer depend on the host timezone. New cycles select the
+constitution by commencement under REQ-33 and permanently pin that version.
+Pre-existing cycles keep their former due-date selection; no historic money is
+rewritten. Decisions 38 and the integration checks record this migration boundary.
+Follow-on date fixes now preserve PostgreSQL DATE values as text, use South African
+session/calendar dates and browser display, validate member/platform dates and use
+the open cycle's pinned constitution for catch-up. Decision 41 records these changes.
+Documentation numbering cleanup unrelated to these changes remains separate work.
 
-**T3. Screens for backends that already exist.** (M)
-- Upload, view and remove proof of payment on the contributions page
-  (`POST/GET /api/contributions/:id/proof`, REQ-53).
-- Waive a penalty (Chairperson): the endpoint exists
-  (`POST /api/contributions/penalties/:id/waive`) but there is no list of penalties
-  anywhere, so add `GET` for penalties and a small page or section.
-- Negotiated queue order: the "Establish the order" button fails for clubs whose
-  method is Negotiated because there is no screen to choose the order
-  (`POST /api/queue/establish` takes `{ order: [memberIds] }`).
+**T3. Screens for backends that already exist — completed.**
+- Contributions: Treasurer uploads/replaces/removes JPEG, PNG or PDF proof against
+  captured contributions; authorised readers can view/download it. The cycle selector
+  exposes the current cycle and the latest 24 cycles from the existing history API.
+- Contributions: paged penalty register with all/outstanding/settled/waived filters;
+  Chairperson waiver requires a reason and uses the existing reversing-entry service.
+  Members see only their own penalties and proof; officers see the club register.
+- Queue: Chairperson arranges every active candidate using Up/Down controls for the
+  Negotiated method and confirms the agreed order. The server revalidates membership
+  before saving. Random draw and Seniority retain their existing flows.
+- Evidence: `node server/integration/screens.js`; decision 40. No new migration.
 
 ## 4. Priority 1 - requirements not yet built
 
@@ -93,46 +107,63 @@ the bank balance. Any non-zero difference is shown as an exception and cannot be
 dismissed without an explanation. Existing: `reconciliation` table with one seeded
 unexplained difference. Needs: repo, service, routes, one page, tests.
 
-**T5. UC7 Governance - REQ-104 to 109, and REQ-32.** (L)
-Secretary records a meeting (date, agenda, members present, minutes; `governance.record`
-exists). System computes quorum from attendance against the constitution's quorum
-percentage. Resolutions taken without quorum are advisory and cannot be given effect.
-Record text, votes for, against and abstaining, and the outcome. An expulsion needs a
-resolution (REQ-104). REQ-32: a resolution amending the constitution is given effect by
-calling `createNewVersion()` in `modules/constitution/constitution.service.js`, which
-already exists and deliberately has no route until this is built. Needs new tables
-(meeting, attendance, resolution), the three-file module, a page.
+**T5. UC7 Governance — completed follow-on, migrations 016 and 017.**
+Includes recorded constitutional voting rules (no assumed majority), exact fractions,
+class-specific amendment thresholds and voting rights; pending proposals; attendance,
+quorum and immutable vote outcomes; atomic version creation; voted officer succession
+and expulsion with queue removal. Membership history is recorded from migration 017
+forward. Old unconfirmed votes remain readable but cannot be newly applied.
+`/governance` also includes the annual report in REQ-110. Actual adopted voting rules
+must be supplied by the club; the documents do not provide numerical thresholds.
+See decisions 37–39 and `npm run test:governance`. T7/T10 and reconciliation capture
+remain separately assigned. No shared database has been migrated here.
 
-**T6. Reversing entries - REQ-91, 92.** (M)
-The permission `ledger.reverse` exists but there is no route. Treasurer posts a reversing
-entry of equal and opposite amount referencing the original (`appendEntry` already
-accepts `reversesId` and `reason`; one reversal per entry is enforced by an index).
-A reversal of a payout needs Chairperson approval first. Penalty waiver already does
-this for penalties only.
+**T6. Ledger reversals — implemented with migration 018.**
+Treasurer posts an equal/opposite entry with the original reference and a reason.
+Payout/claim reversals follow request → Chairperson approval → Treasurer posting.
+Original records stay immutable; duplicate, cross-club and reversal-of-reversal
+attempts are refused. The Ledger screen exposes requests and actions.
+REQ-63's Chairperson penalty-waiver flow remains the exception to general REQ-92.
+See decision 42 and `node server/integration/ledger-reversals.js`.
+
+**Boundary to resolve separately:** ledger reversal does not rewind contribution
+allocations/credits, queue positions or claim/payout workflow status. That requires
+source-operation compensation rules and allocation history not provided by these
+requirements. Do not treat a ledger reversal as cancellation of the original process.
 
 ### 4.2 Member lifecycle
 
 **T7. Standing engine and defaulter pipeline - REQ-44, 101, 102, 103.** (L)
-Important: **nothing in the application code ever changes a member's standing.** It is
-only set by the seed script. Payout eligibility, arrears rulings, claim eligibility and
+The automatic standing pipeline is still outstanding. Governance now changes standing
+on an approved expulsion, but automated warning/suspension/reinstatement remains
+assigned to another member. Payout eligibility, arrears rulings, claim eligibility and
 distributions all depend on it, so in real use they would run on stale data.
 Build: a pipeline Warning, Suspension, Expulsion advancing on thresholds in the
 constitution (there are no threshold columns yet, so add them and validate them in
 `rules/constitution.js`), automatic return to Good standing when arrears and penalties
 are cleared, with the date recorded. Expulsion must wait for a resolution (T5).
 
-**T8. Exit processing - REQ-40 (exit date), 45, 46, 47, 48.** (L)
-Nothing sets a member to Exited or records an exit date. Build: notice of exit, compute
-repayable and forfeited amounts from the constitution's forfeiture rule, Chairperson
-approval, post to the ledger only on approval, and refuse exit for the member next in a
-Rotating club's queue who has an outstanding contribution. Reuse: payout type
-`Exit settlement` already exists in the schema, `removeFromQueue()` in
-`queue.service.js` is ready to call, and distributions already leave Exited members out
-(decision 28), on the assumption this exists.
+**T8. Exit processing — implemented for supported mapped rules; partial overall.**
+Migration 019 and `/exits` record an immutable constitution calculation mapping,
+notice and calculated assessment; Treasurer prepares and a different Chairperson
+approves. Approval atomically posts repayment and retained-forfeiture evidence,
+settles deducted penalties, closes the queue gap and records Exited/exit date.
+Pending notices do not move funds. The last Chairperson/Treasurer is protected.
+Financial changes require reassessment; insufficient pool funds refuse the transaction.
 
-**T9. Beneficiaries - REQ-36.** (M)
-Member nominates beneficiaries with name, relationship and percentage share; shares must
-total 100. The `beneficiary` table exists; there is no code at all.
+REQ-47 now supports a carried General resolution containing the exact contribution
+debt snapshot. The write-off takes effect atomically with exit approval (migration 020).
+Expected and captured amounts remain intact; forgiven debt is stored separately.
+A changed debt requires a fresh vote. Free-text rules
+with unrepresented conditions (e.g. before completing one rotation) must NOT be
+mapped to an unconditional percentage. Resolve these with the adopted constitution;
+there is no default interpretation. A notice cannot currently be submitted until
+its constitution has a valid mapping. See decision 43 for accounting boundaries.
+
+**T9. Beneficiaries — completed, REQ-36.**
+`/beneficiaries` lets every club role replace their own nominations atomically.
+Names, relationships and positive shares are required, totalling exactly 100%.
+The API derives the member from the session, never the request body.
 
 ### 4.3 Communication
 
@@ -144,18 +175,30 @@ channel preferences (REQ-136); (3) events (REQ-137); (4) delivery record and ret
 (REQ-140). SMS and email need a provider account, so do those last. REQ-141: no
 notification may contain a password, full ID number or bank account number.
 
-**T11. Announcements - REQ-129 to 135.** (M)
-Chairperson or Secretary publishes; author, time, subject, body recorded; shown newest
-first; cannot be edited or deleted; a correction is a new announcement referencing the
-old one; no replies. Sending to channels (REQ-132) depends on T10.
+**T11. Announcements — completed except teammate-owned REQ-132 dispatch.**
+`/announcements` allows Chairperson/Secretary publication, newest-first paging,
+author/time/subject/body and linked corrections. Database triggers prohibit updates
+and deletes. There are no reply/direct-message routes. The notification member must
+consume announcement records and implement delivery/retry/deduplication.
 
 ### 4.4 Reporting and screens
 
-**T12. Dashboards and annual report - REQ-110 to 118.** (L)
-Today there is one generic dashboard for every role. The SRS wants separate Member,
-Treasurer, Chairperson and Platform Administrator dashboards, a 12-month income and
-expenditure series, exceptions highlighted, every figure drawn from the same query as
-its detail view, and drill-through. REQ-110 is the annual report.
+**T12. Dashboards — member and officer financial detail implemented; partial overall.**
+REQ-110 remains on Governance. `/dashboard` now uses a read-only repeatable snapshot
+for each indicator and its embedded drill-through rows. Member figures cover paid
+contributions, outstanding contributions, unpaid penalties and the shared queue
+projection. Treasurer/Chairperson see month income, payouts/claims, costs, penalties,
+pool, contribution arrears, latest reconciliation and rotation payouts overdue >7 days.
+Chairperson additionally sees pending payouts, exits and constitution proposals.
+A chart and expandable records cover the previous 12 completed calendar months.
+The platform dashboard now opens aggregate source totals for member standings and
+ledger categories (REQ-114,117,118). These use the same read-only snapshot as the cards;
+no club/member financial records are exposed. Ended memberships are excluded.
+
+Still needed: defaulter-stage counts and near-expulsion exceptions from the assigned
+pipeline; full portfolio acceptance and browser/device walkthrough. Reconciliation is read-only here; capture/UI remains teammate-owned. REQ-112's
+wording lists penalties as expenditure, while the existing ledger records them as
+positive assessments: this conflict is flagged in decision 43, not silently changed.
 
 **T13. Batch capture - REQ-58.** (S)
 Treasurer captures contributions for several members in one operation with a running
@@ -170,6 +213,12 @@ provider credentials, lowest priority.)
 ### 4.5 Already assigned
 
 **Assistant - REQ-119 to 128.** Another group member.
+
+Also assigned to other members and excluded from this governance update:
+REQ-3 (federated sign-in), REQ-11 (password re-entry), REQ-58 (batch capture),
+REQ-100 (export), REQ-101–103 (defaulter pipeline), notifications and
+Reconciliation (Use Case 5). The annual governance report only reads existing
+reconciliation records; it does not implement reconciliation capture.
 
 ## 5. Decisions the group must make first (changes to the SRS)
 
@@ -204,9 +253,8 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 
 ## 6. Documentation to correct
 
-- `docs/traceability.md`, Ledger section: rows are labelled REQ-88 to REQ-95, but in
-  the SRS ledger requirements are REQ-89 to REQ-94. REQ-88 is the burial-claims
-  ordering rule, so the number is used twice.
+- Ledger numbering is now corrected to REQ-89–95. Audit remaining sections against
+  the supplied SRS before submission.
 - `docs/traceability.md` says the Assistant is REQ-110 to 118. In the SRS it is
   REQ-119 to 128; REQ-110 to 118 are the annual report and dashboards.
 - Thirty SRS requirements are never mentioned in `traceability.md`: REQ-40, 44 to 48,
@@ -219,11 +267,11 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 
 ## 7. Suggested order if time is short
 
-1. T2 and T3 (an hour or two each, and they finish work already claimed as done).
-2. T4 Reconciliation and T5 Governance, one person each. These are the two missing
-   use cases.
+1. Remaining documentation numbering cleanup (T2 date/cycle fixes and T3 screens are done).
+2. T4 Reconciliation remains. T5 Governance is implemented; apply migrations 016 and 017
+   and run the governance demo checks.
 3. T7 Standing engine, then T8 Exit processing.
-4. T6, T13, T12 as time allows.
+4. T12 role dashboards remain; T6 ledger reversals are implemented. T13 is assigned.
 5. T10, T11, T14, T15 last; leave what does not fit in `traceability.md` under
    "Not yet implemented" so the marker sees it was a decision, not an oversight.
 6. D1, D2, D3 only after the SRS is amended.

@@ -17,12 +17,28 @@ const ledger = require("../ledger/ledger.service");
 const { withClubTransaction } = require("../../db/tx");
 const { toCents, toNumeric, format } = require("../../lib/money");
 const {
-    resolveStatus, lateFrom, penaltyIsDue, checkCaptureAmount, checkMethod
+  resolveStatus,
+  lateFrom,
+  penaltyIsDue,
+  checkCaptureAmount,
+  checkMethod,
 } = require("../../rules/contributions");
 const { assessWaiver } = require("../../rules/penalties");
-const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
+const {
+  BadRequest,
+  Conflict,
+  NotFound,
+  RuleRefusal,
+} = require("../../lib/errors");
 
-const iso = (d) => new Date(d).toISOString().slice(0, 10);
+const { assertIsoDate, todayIso, addDays } = require("../../lib/dates");
+function inputDate(value, label) {
+  try {
+    return assertIsoDate(value, label);
+  } catch (err) {
+    throw new BadRequest(err.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // openCycle() + generateExpectedContributions()
@@ -40,100 +56,114 @@ const iso = (d) => new Date(d).toISOString().slice(0, 10);
  * database can settle it.
  */
 async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
-    const constitution = await repo.constitutionInForceOn(db);
-    if (!constitution) {
-        throw new RuleRefusal("This club has no constitution on record, so a cycle cannot be opened.");
-    }
-
-    const existing = await repo.openCycleFor(db);
-    if (existing) {
-        throw new Conflict(
-            `Cycle ${existing.sequence_number} is still open. Close it before opening another.`,
-            { cycleId: existing.cycle_id, sequenceNumber: existing.sequence_number }
-        );
-    }
-
-    const start = startDate ? iso(startDate) : iso(new Date());
-    const due = dueDate ? iso(dueDate) : iso(new Date(new Date(start).getTime() + 7 * 86400000));
-
-    if (new Date(due) < new Date(start)) {
-        throw new BadRequest("The due date cannot fall before the cycle starts.");
-    }
-
-    const members = await repo.membersForNewCycle(db);
+  const start = startDate ? inputDate(startDate, "Cycle start") : todayIso();
+  if (start > todayIso())
+    throw new RuleRefusal(
+      "A cycle cannot be opened before its commencement date.",
+    );
+  const due = dueDate ? inputDate(dueDate, "Due date") : addDays(start, 7);
+  if (due < start)
+    throw new BadRequest("The due date cannot fall before the cycle starts.");
+  const result = await withClubTransaction(db.clubId, async (tx) => {
+    await repo.lockClub(tx);
+    const constitution = await repo.constitutionForStart(tx, start);
+    if (!constitution)
+      throw new RuleRefusal(
+        "No constitution applies to this cycle commencement date.",
+      );
+    const existing = await repo.openCycleFor(tx);
+    if (existing)
+      throw new Conflict(
+        `Cycle ${existing.sequence_number} is still open. Close it first.`,
+      );
+    const members = await repo.membersForNewCycle(tx);
     if (members.length === 0) {
-        throw new RuleRefusal(
-            "No member of this club is in good standing, so there is nobody to bill. " +
-            "Register members or restore standing first."
-        );
+      throw new RuleRefusal(
+        "No member of this club is in good standing, so there is nobody to bill. " +
+          "Register members or restore standing first.",
+      );
     }
 
     const contributionCents = toCents(constitution.contribution_amount);
-    const sequenceNumber = await repo.nextSequenceNumber(db);
+    const sequenceNumber = await repo.nextSequenceNumber(tx);
 
-    const result = await withClubTransaction(db.clubId, async (tx) => {
-        const cycle = await repo.createCycle(tx, {
-            sequenceNumber, startDate: start, dueDate: due, openedBy: actor.userId
-        });
+    const cycle = await repo.createCycle(tx, {
+      sequenceNumber,
+      startDate: start,
+      dueDate: due,
+      openedBy: actor.userId,
+    });
 
-        let billedCents = 0;
-        let creditsApplied = 0;
+    let billedCents = 0;
+    let creditsApplied = 0;
 
-        for (const m of members) {
-            // REQ-41: a catch-up obligation agreed at registration is added to
-            // the member's first bill.
-            const catchUpCents = toCents(m.catch_up_amount);
+    for (const m of members) {
+      // REQ-41: a catch-up obligation agreed at registration is added to
+      // the member's first bill.
+      const catchUpCents = toCents(m.catch_up_amount);
 
-            // REQ-57: a credit carried from an earlier overpayment reduces it.
-            const creditCents = toCents(m.credit_amount);
+      // REQ-57: a credit carried from an earlier overpayment reduces it.
+      const creditCents = toCents(m.credit_amount);
 
-            const grossCents = contributionCents + catchUpCents;
-            const appliedCredit = Math.min(creditCents, grossCents);
-            const expectedCents = grossCents - appliedCredit;
+      const grossCents = contributionCents + catchUpCents;
+      const appliedCredit = Math.min(creditCents, grossCents);
+      const expectedCents = grossCents - appliedCredit;
 
-            await repo.insertExpected(tx, {
-                cycleId: cycle.cycle_id,
-                memberId: m.member_id,
-                expectedAmount: toNumeric(expectedCents)
-            });
+      await repo.insertExpected(tx, {
+        cycleId: cycle.cycle_id,
+        memberId: m.member_id,
+        expectedAmount: toNumeric(expectedCents),
+      });
 
-            if (appliedCredit > 0) {
-                await repo.addCredit(tx, m.member_id, toNumeric(creditCents - appliedCredit));
-                creditsApplied += appliedCredit;
-            }
-            // The catch-up has now been billed, so it is cleared.
-            if (catchUpCents > 0) {
-                await tx.query(
-                    `UPDATE member SET catch_up_amount = 0
+      if (appliedCredit > 0) {
+        await repo.addCredit(
+          tx,
+          m.member_id,
+          toNumeric(creditCents - appliedCredit),
+        );
+        creditsApplied += appliedCredit;
+      }
+      // The catch-up has now been billed, so it is cleared.
+      if (catchUpCents > 0) {
+        await tx.query(
+          `UPDATE member SET catch_up_amount = 0
                       WHERE club_id = $1 AND member_id = $2`,
-                    [tx.clubId, m.member_id]
-                );
-            }
+          [tx.clubId, m.member_id],
+        );
+      }
 
-            billedCents += expectedCents;
-        }
-
-        return { cycle, billedCents, creditsApplied };
-    });
-
-    await audit("cycle.open", "Success", {
-        detail:
-            `${actor.fullName} opened cycle ${sequenceNumber} (${start} to ${due}), ` +
-            `billing ${members.length} member(s) ${format(result.billedCents)}` +
-            (result.creditsApplied ? `, after ${format(result.creditsApplied)} of credits` : ""),
-        targetType: "cycle",
-        targetId: result.cycle.cycle_id
-    });
+      billedCents += expectedCents;
+    }
 
     return {
-        cycleId: result.cycle.cycle_id,
-        sequenceNumber,
-        startDate: start,
-        dueDate: due,
-        memberCount: members.length,
-        expectedTotal: toNumeric(result.billedCents),
-        creditsApplied: toNumeric(result.creditsApplied)
+      cycle,
+      billedCents,
+      creditsApplied,
+      sequenceNumber,
+      memberCount: members.length,
     };
+  });
+
+  await audit("cycle.open", "Success", {
+    detail:
+      `${actor.fullName} opened cycle ${result.sequenceNumber} (${start} to ${due}), ` +
+      `billing ${result.memberCount} member(s) ${format(result.billedCents)}` +
+      (result.creditsApplied
+        ? `, after ${format(result.creditsApplied)} of credits`
+        : ""),
+    targetType: "cycle",
+    targetId: result.cycle.cycle_id,
+  });
+
+  return {
+    cycleId: result.cycle.cycle_id,
+    sequenceNumber: result.sequenceNumber,
+    startDate: start,
+    dueDate: due,
+    memberCount: result.memberCount,
+    expectedTotal: toNumeric(result.billedCents),
+    creditsApplied: toNumeric(result.creditsApplied),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,241 +187,284 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
  *
  * @returns {{allocations: Array, creditCents: number}}
  */
-async function applyExcess(tx, { memberId, excessCents, excludeContributionId }) {
-    const allocations = [];
-    let remaining = excessCents;
+async function applyExcess(
+  tx,
+  { memberId, excessCents, excludeContributionId },
+) {
+  const allocations = [];
+  let remaining = excessCents;
 
-    // 1. Penalties.
-    if (remaining > 0) {
-        const penalties = await repo.unsettledPenalties(tx, memberId);
-        for (const p of penalties) {
-            if (remaining <= 0) break;
-            const owingCents = toCents(p.amount) - toCents(p.settled_amount);
-            if (owingCents <= 0) continue;
+  // 1. Penalties.
+  if (remaining > 0) {
+    const penalties = await repo.unsettledPenalties(tx, memberId);
+    for (const p of penalties) {
+      if (remaining <= 0) break;
+      const owingCents = toCents(p.amount) - toCents(p.settled_amount);
+      if (owingCents <= 0) continue;
 
-            const payCents = Math.min(remaining, owingCents);
-            await repo.settlePenalty(tx, p.penalty_id, toNumeric(toCents(p.settled_amount) + payCents));
-            remaining -= payCents;
+      const payCents = Math.min(remaining, owingCents);
+      await repo.settlePenalty(
+        tx,
+        p.penalty_id,
+        toNumeric(toCents(p.settled_amount) + payCents),
+      );
+      remaining -= payCents;
 
-            allocations.push({
-                type: "penalty",
-                id: p.penalty_id,
-                amount: toNumeric(payCents),
-                description: `Penalty: ${p.reason}`,
-                settledInFull: payCents === owingCents
-            });
-        }
+      allocations.push({
+        type: "penalty",
+        id: p.penalty_id,
+        amount: toNumeric(payCents),
+        description: `Penalty: ${p.reason}`,
+        settledInFull: payCents === owingCents,
+      });
     }
+  }
 
-    // 2. Prior outstanding contributions, oldest first.
-    if (remaining > 0) {
-        const prior = await repo.priorOutstanding(tx, memberId, excludeContributionId);
-        for (const c of prior) {
-            if (remaining <= 0) break;
-            const shortCents = toCents(c.expected_amount) - toCents(c.captured_amount);
-            if (shortCents <= 0) continue;
+  // 2. Prior outstanding contributions, oldest first.
+  if (remaining > 0) {
+    const prior = await repo.priorOutstanding(
+      tx,
+      memberId,
+      excludeContributionId,
+    );
+    for (const c of prior) {
+      if (remaining <= 0) break;
+      const shortCents =
+        toCents(c.expected_amount) - toCents(c.captured_amount);
+      if (shortCents <= 0) continue;
 
-            const payCents = Math.min(remaining, shortCents);
-            const newCapturedCents = toCents(c.captured_amount) + payCents;
+      const payCents = Math.min(remaining, shortCents);
+      const newCapturedCents = toCents(c.captured_amount) + payCents;
 
-            await tx.query(
-                `UPDATE contribution
+      await tx.query(
+        `UPDATE contribution
                     SET captured_amount = $3, updated_at = now()
                   WHERE club_id = $1 AND contribution_id = $2`,
-                [tx.clubId, c.contribution_id, toNumeric(newCapturedCents)]
-            );
+        [tx.clubId, c.contribution_id, toNumeric(newCapturedCents)],
+      );
 
-            // The status of that older cycle has changed, so it is recomputed
-            // rather than left stale (REQ-54).
-            const constitution = await repo.constitutionInForceOn(tx, iso(c.due_date));
-            const status = resolveStatus({
-                expected: c.expected_amount,
-                captured: toNumeric(newCapturedCents),
-                dueDate: c.due_date,
-                graceDays: constitution?.grace_period_days || 0
-            });
-            await repo.setStatus(tx, c.contribution_id, status);
+      // The status of that older cycle has changed, so it is recomputed
+      // rather than left stale (REQ-54).
+      const constitution = await repo.constitutionForCycle(tx, c.cycle_id);
+      const status = resolveStatus({
+        expected: c.expected_amount,
+        captured: toNumeric(newCapturedCents),
+        dueDate: c.due_date,
+        graceDays: constitution?.grace_period_days || 0,
+      });
+      await repo.setStatus(tx, c.contribution_id, status);
 
-            remaining -= payCents;
-            allocations.push({
-                type: "contribution",
-                id: c.contribution_id,
-                amount: toNumeric(payCents),
-                description: `Arrears from cycle ${c.sequence_number}`,
-                settledInFull: payCents === shortCents
-            });
-        }
+      remaining -= payCents;
+      allocations.push({
+        type: "contribution",
+        id: c.contribution_id,
+        amount: toNumeric(payCents),
+        description: `Arrears from cycle ${c.sequence_number}`,
+        settledInFull: payCents === shortCents,
+      });
     }
+  }
 
-    // 3. Whatever is left is a credit against the next cycle.
-    if (remaining > 0) {
-        const member = await repo.getMemberCredit(tx, memberId);
-        const newCreditCents = toCents(member.credit_amount) + remaining;
-        await repo.addCredit(tx, memberId, toNumeric(newCreditCents));
-        allocations.push({
-            type: "credit",
-            id: memberId,
-            amount: toNumeric(remaining),
-            description: "Credit against the next cycle",
-            settledInFull: true
-        });
-    }
+  // 3. Whatever is left is a credit against the next cycle.
+  if (remaining > 0) {
+    const member = await repo.getMemberCredit(tx, memberId);
+    const newCreditCents = toCents(member.credit_amount) + remaining;
+    await repo.addCredit(tx, memberId, toNumeric(newCreditCents));
+    allocations.push({
+      type: "credit",
+      id: memberId,
+      amount: toNumeric(remaining),
+      description: "Credit against the next cycle",
+      settledInFull: true,
+    });
+  }
 
-    return { allocations, creditCents: remaining };
+  return { allocations, creditCents: remaining };
 }
 
 // ---------------------------------------------------------------------------
 // captureContribution() — REQ-51, REQ-52, REQ-59, REQ-60
 // ---------------------------------------------------------------------------
 
-async function captureContribution(db, contributionId, input, { actor, audit }) {
-    // --- refusals, before anything is written ---
-    const amountError = checkCaptureAmount(input.amount);        // REQ-60
-    if (amountError) throw new BadRequest(amountError, { fields: { amount: amountError } });
+async function captureContribution(
+  db,
+  contributionId,
+  input,
+  { actor, audit },
+) {
+  // --- refusals, before anything is written ---
+  const amountError = checkCaptureAmount(input.amount); // REQ-60
+  if (amountError)
+    throw new BadRequest(amountError, { fields: { amount: amountError } });
 
-    const methodError = checkMethod(input.method, input.reference); // REQ-52
-    if (methodError) throw new BadRequest("Some details need correcting.", { fields: methodError });
+  const methodError = checkMethod(input.method, input.reference); // REQ-52
+  if (methodError)
+    throw new BadRequest("Some details need correcting.", {
+      fields: methodError,
+    });
 
-    const existing = await repo.getContribution(db, contributionId);
-    if (!existing) throw new NotFound("That contribution was not found in this club.");
+  const existing = await repo.getContribution(db, contributionId);
+  if (!existing)
+    throw new NotFound("That contribution was not found in this club.");
 
-    // REQ-59.
-    if (existing.cycle_status === "Closed") {
-        throw new RuleRefusal(
-            `Cycle ${existing.sequence_number} is closed. A correction to a closed cycle needs a ` +
-            `reversing entry followed by a fresh capture, so that the original record survives.`,
-            { requirement: "REQ-59" }
-        );
+  if (
+    toCents(existing.written_off_amount || "0") > 0 ||
+    ["Exited", "Expelled"].includes(existing.standing)
+  )
+    throw new RuleRefusal(
+      "This membership has ended or its contribution was written off. No new cash can be captured against it.",
+    );
+
+  // REQ-59.
+  if (existing.cycle_status === "Closed") {
+    throw new RuleRefusal(
+      `Cycle ${existing.sequence_number} is closed. A correction to a closed cycle needs a ` +
+        `reversing entry followed by a fresh capture, so that the original record survives.`,
+      { requirement: "REQ-59" },
+    );
+  }
+
+  const constitution = await repo.constitutionForCycle(db, existing.cycle_id);
+  const graceDays = constitution?.grace_period_days || 0;
+  const penaltyCents = toCents(constitution?.penalty_amount || 0);
+
+  const amountCents = toCents(input.amount);
+  const expectedCents = toCents(existing.expected_amount);
+  const alreadyCents = toCents(existing.captured_amount);
+
+  // The amount that answers THIS cycle, and the amount that overflows it.
+  const shortfallCents = Math.max(0, expectedCents - alreadyCents);
+  const appliedCents = Math.min(amountCents, shortfallCents);
+  const excessCents = amountCents - appliedCents;
+
+  const receiptDate = input.receiptDate
+    ? inputDate(input.receiptDate, "Receipt date")
+    : todayIso();
+
+  // REQ-56 attaches the penalty to HAVING BEEN late, so it is decided from the
+  // member's position BEFORE this payment, not after it.
+  //
+  // Keying it to the post-capture status was a defect: a member who let the
+  // deadline pass and then paid in full would resolve straight to Paid and
+  // escape the penalty, which is precisely the person the rule exists for.
+  const statusBefore = resolveStatus({
+    expected: existing.expected_amount,
+    captured: existing.captured_amount,
+    dueDate: existing.due_date,
+    graceDays,
+  });
+
+  const result = await withClubTransaction(db.clubId, async (tx, client) => {
+    await repo.lockClub(tx);
+    const live = await repo.getContribution(tx, contributionId);
+    if (
+      toCents(live.written_off_amount || "0") > 0 ||
+      ["Exited", "Expelled"].includes(live.standing) ||
+      live.cycle_status === "Closed" ||
+      live.captured_amount !== existing.captured_amount
+    )
+      throw new RuleRefusal(
+        "The contribution or membership changed. Reload before capturing payment.",
+      );
+    const newCapturedCents = alreadyCents + appliedCents;
+
+    const status = resolveStatus({
+      expected: existing.expected_amount,
+      captured: toNumeric(newCapturedCents),
+      dueDate: existing.due_date,
+      graceDays,
+    });
+
+    await repo.applyCapture(tx, contributionId, {
+      capturedAmount: toNumeric(newCapturedCents),
+      status,
+      receiptDate,
+      method: input.method,
+      reference: input.reference || null,
+      capturedBy: actor.userId,
+    });
+
+    // ONE ledger entry, for the cash actually received. The allocation of
+    // that cash below does not move money and does not post entries.
+    const entry = await ledger.appendEntry(client, {
+      clubId: tx.clubId,
+      memberId: existing.member_id,
+      entryType: "Contribution",
+      amount: toNumeric(amountCents),
+      description: `Contribution, cycle ${existing.sequence_number} — ${existing.full_name}`,
+      reference: input.reference || null,
+      contributionId,
+      postedBy: actor.userId,
+    });
+
+    // REQ-57.
+    let excess = { allocations: [], creditCents: 0 };
+    if (excessCents > 0) {
+      excess = await applyExcess(tx, {
+        memberId: existing.member_id,
+        excessCents,
+        excludeContributionId: contributionId,
+      });
     }
 
-    const constitution = await repo.constitutionInForceOn(db, iso(existing.due_date));
-    const graceDays = constitution?.grace_period_days || 0;
-    const penaltyCents = toCents(constitution?.penalty_amount || 0);
-
-    const amountCents = toCents(input.amount);
-    const expectedCents = toCents(existing.expected_amount);
-    const alreadyCents = toCents(existing.captured_amount);
-
-    // The amount that answers THIS cycle, and the amount that overflows it.
-    const shortfallCents = Math.max(0, expectedCents - alreadyCents);
-    const appliedCents = Math.min(amountCents, shortfallCents);
-    const excessCents = amountCents - appliedCents;
-
-    const receiptDate = input.receiptDate ? iso(input.receiptDate) : iso(new Date());
-
-    // REQ-56 attaches the penalty to HAVING BEEN late, so it is decided from the
-    // member's position BEFORE this payment, not after it.
+    // REQ-56, posted once only. The unique index from migration 009 makes a
+    // repeat impossible even when two captures race.
     //
-    // Keying it to the post-capture status was a defect: a member who let the
-    // deadline pass and then paid in full would resolve straight to Paid and
-    // escape the penalty, which is precisely the person the rule exists for.
-    const statusBefore = resolveStatus({
-        expected: existing.expected_amount,
-        captured: existing.captured_amount,
-        dueDate: existing.due_date,
-        graceDays
-    });
-
-    const result = await withClubTransaction(db.clubId, async (tx, client) => {
-        const newCapturedCents = alreadyCents + appliedCents;
-
-        const status = resolveStatus({
-            expected: existing.expected_amount,
-            captured: toNumeric(newCapturedCents),
-            dueDate: existing.due_date,
-            graceDays
+    // A member who never pays at all is not reached here, because nothing
+    // triggers a capture for them. Their penalty is levied when the cycle
+    // closes — closeCycle() sweeps the unpaid and is scheduled for the next
+    // sprint. Until then their status still READS as Late everywhere,
+    // because it is recomputed on every read.
+    let penalty = null;
+    if (penaltyIsDue(statusBefore) && penaltyCents > 0) {
+      penalty = await repo.levyPenalty(tx, {
+        memberId: existing.member_id,
+        cycleId: existing.cycle_id,
+        amount: toNumeric(penaltyCents),
+        reason: `Late contribution, cycle ${existing.sequence_number}`,
+      });
+      if (penalty) {
+        await ledger.appendEntry(client, {
+          clubId: tx.clubId,
+          memberId: existing.member_id,
+          entryType: "Penalty",
+          amount: toNumeric(penaltyCents),
+          description: `Late penalty, cycle ${existing.sequence_number} — ${existing.full_name}`,
+          penaltyId: penalty.penalty_id,
+          postedBy: actor.userId,
         });
+      }
+    }
 
-        await repo.applyCapture(tx, contributionId, {
-            capturedAmount: toNumeric(newCapturedCents),
-            status,
-            receiptDate,
-            method: input.method,
-            reference: input.reference || null,
-            capturedBy: actor.userId
-        });
+    return { status, newCapturedCents, entry, excess, penalty };
+  });
 
-        // ONE ledger entry, for the cash actually received. The allocation of
-        // that cash below does not move money and does not post entries.
-        const entry = await ledger.appendEntry(client, {
-            clubId: tx.clubId,
-            memberId: existing.member_id,
-            entryType: "Contribution",
-            amount: toNumeric(amountCents),
-            description: `Contribution, cycle ${existing.sequence_number} — ${existing.full_name}`,
-            reference: input.reference || null,
-            contributionId,
-            postedBy: actor.userId
-        });
+  await audit("contribution.capture", "Success", {
+    detail:
+      `${actor.fullName} captured ${format(amountCents)} from ${existing.full_name} ` +
+      `for cycle ${existing.sequence_number} (${input.method}). Status: ${result.status}.` +
+      (excessCents > 0 ? ` Excess ${format(excessCents)} reallocated.` : "") +
+      (result.penalty ? ` Late penalty ${format(penaltyCents)} levied.` : ""),
+    targetType: "contribution",
+    targetId: contributionId,
+  });
 
-        // REQ-57.
-        let excess = { allocations: [], creditCents: 0 };
-        if (excessCents > 0) {
-            excess = await applyExcess(tx, {
-                memberId: existing.member_id,
-                excessCents,
-                excludeContributionId: contributionId
-            });
-        }
-
-        // REQ-56, posted once only. The unique index from migration 009 makes a
-        // repeat impossible even when two captures race.
-        //
-        // A member who never pays at all is not reached here, because nothing
-        // triggers a capture for them. Their penalty is levied when the cycle
-        // closes — closeCycle() sweeps the unpaid and is scheduled for the next
-        // sprint. Until then their status still READS as Late everywhere,
-        // because it is recomputed on every read.
-        let penalty = null;
-        if (penaltyIsDue(statusBefore) && penaltyCents > 0) {
-            penalty = await repo.levyPenalty(tx, {
-                memberId: existing.member_id,
-                cycleId: existing.cycle_id,
-                amount: toNumeric(penaltyCents),
-                reason: `Late contribution, cycle ${existing.sequence_number}`
-            });
-            if (penalty) {
-                await ledger.appendEntry(client, {
-                    clubId: tx.clubId,
-                    memberId: existing.member_id,
-                    entryType: "Penalty",
-                    amount: toNumeric(penaltyCents),
-                    description: `Late penalty, cycle ${existing.sequence_number} — ${existing.full_name}`,
-                    penaltyId: penalty.penalty_id,
-                    postedBy: actor.userId
-                });
-            }
-        }
-
-        return { status, newCapturedCents, entry, excess, penalty };
-    });
-
-    await audit("contribution.capture", "Success", {
-        detail:
-            `${actor.fullName} captured ${format(amountCents)} from ${existing.full_name} ` +
-            `for cycle ${existing.sequence_number} (${input.method}). Status: ${result.status}.` +
-            (excessCents > 0 ? ` Excess ${format(excessCents)} reallocated.` : "") +
-            (result.penalty ? ` Late penalty ${format(penaltyCents)} levied.` : ""),
-        targetType: "contribution",
-        targetId: contributionId
-    });
-
-    return {
-        contributionId,
-        memberName: existing.full_name,
-        captured: toNumeric(result.newCapturedCents),
-        expected: existing.expected_amount,
-        status: result.status,
-        amountReceived: toNumeric(amountCents),
-        appliedToThisCycle: toNumeric(appliedCents),
-        excess: toNumeric(excessCents),
-        allocations: result.excess.allocations,
-        penaltyLevied: result.penalty ? toNumeric(penaltyCents) : null,
-        ledger: {
-            entryId: result.entry.entryId,
-            resultingBalance: result.entry.resultingBalance
-        }
-    };
+  return {
+    contributionId,
+    memberName: existing.full_name,
+    captured: toNumeric(result.newCapturedCents),
+    expected: existing.expected_amount,
+    status: result.status,
+    amountReceived: toNumeric(amountCents),
+    appliedToThisCycle: toNumeric(appliedCents),
+    excess: toNumeric(excessCents),
+    allocations: result.excess.allocations,
+    penaltyLevied: result.penalty ? toNumeric(penaltyCents) : null,
+    ledger: {
+      entryId: result.entry.entryId,
+      resultingBalance: result.entry.resultingBalance,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -399,63 +472,67 @@ async function captureContribution(db, contributionId, input, { actor, audit }) 
 // ---------------------------------------------------------------------------
 
 async function listCycles(db) {
-    const rows = await repo.listCycles(db);
-    return rows.map((c) => ({
-        cycleId: c.cycle_id,
-        sequenceNumber: c.sequence_number,
-        startDate: c.start_date,
-        dueDate: c.due_date,
-        status: c.status,
-        memberCount: c.member_count,
-        expectedTotal: c.expected_total,
-        capturedTotal: c.captured_total
-    }));
+  const rows = await repo.listCycles(db);
+  return rows.map((c) => ({
+    cycleId: c.cycle_id,
+    sequenceNumber: c.sequence_number,
+    startDate: c.start_date,
+    dueDate: c.due_date,
+    status: c.status,
+    memberCount: c.member_count,
+    expectedTotal: c.expected_total,
+    capturedTotal: c.captured_total,
+  }));
 }
 
 async function getCycleDetail(db, cycleId) {
-    const cycle = cycleId
-        ? await repo.getCycle(db, cycleId)
-        : await repo.openCycleFor(db);
+  const cycle = cycleId
+    ? await repo.getCycle(db, cycleId)
+    : await repo.openCycleFor(db);
 
-    if (!cycle) return null;
+  if (!cycle) return null;
 
-    const constitution = await repo.constitutionInForceOn(db, iso(cycle.due_date));
-    const graceDays = constitution?.grace_period_days || 0;
-    const rows = await repo.listForCycle(db, cycle.cycle_id);
+  const constitution = await repo.constitutionForCycle(db, cycle.cycle_id);
+  const graceDays = constitution?.grace_period_days || 0;
+  const rows = await repo.listForCycle(db, cycle.cycle_id);
 
-    return {
-        cycle: {
-            cycleId: cycle.cycle_id,
-            sequenceNumber: cycle.sequence_number,
-            startDate: cycle.start_date,
-            dueDate: cycle.due_date,
-            status: cycle.status,
-            lateFrom: iso(lateFrom(cycle.due_date, graceDays)),
-            gracePeriodDays: graceDays,
-            penaltyAmount: constitution?.penalty_amount || "0.00"
-        },
-        contributions: rows.map((r) => ({
-            contributionId: r.contribution_id,
-            memberId: r.member_id,
-            fullName: r.full_name,
-            phone: r.phone,
-            standing: r.standing,
-            expected: r.expected_amount,
-            captured: r.captured_amount,
-            // Recomputed on read, so a status does not go stale merely because
-            // nobody has touched the record since the deadline passed (REQ-54).
-            status: resolveStatus({
-                expected: r.expected_amount,
-                captured: r.captured_amount,
-                dueDate: cycle.due_date,
-                graceDays
+  return {
+    cycle: {
+      cycleId: cycle.cycle_id,
+      sequenceNumber: cycle.sequence_number,
+      startDate: cycle.start_date,
+      dueDate: cycle.due_date,
+      status: cycle.status,
+      lateFrom: addDays(cycle.due_date, Number(graceDays) + 1),
+      gracePeriodDays: graceDays,
+      penaltyAmount: constitution?.penalty_amount || "0.00",
+    },
+    contributions: rows.map((r) => ({
+      contributionId: r.contribution_id,
+      memberId: r.member_id,
+      fullName: r.full_name,
+      phone: r.phone,
+      standing: r.standing,
+      expected: r.expected_amount,
+      captured: r.captured_amount,
+      writtenOff: r.written_off_amount || "0.00",
+      // Recomputed on read, so a status does not go stale merely because
+      // nobody has touched the record since the deadline passed (REQ-54).
+      status:
+        toCents(r.written_off_amount || "0") > 0
+          ? "Written off"
+          : resolveStatus({
+              expected: r.expected_amount,
+              captured: r.captured_amount,
+              dueDate: cycle.due_date,
+              graceDays,
             }),
-            storedStatus: r.status,
-            receiptDate: r.receipt_date,
-            method: r.method,
-            reference: r.reference
-        }))
-    };
+      storedStatus: r.status,
+      receiptDate: r.receipt_date,
+      method: r.method,
+      reference: r.reference,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -474,67 +551,124 @@ async function getCycleDetail(db, cycleId) {
  * original penalty"), and the penalty row is marked waived, with the reason,
  * once, permanently (the database enforces this even bypassing the service).
  */
+const OFFICERS = ["Treasurer", "Secretary", "Chairperson"];
+async function listPenalties(db, query, { actor }) {
+  const status = query.status || "all";
+  const offset = Number(query.offset || 0);
+  if (
+    !["all", "outstanding", "settled", "waived"].includes(status) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0
+  )
+    throw new BadRequest("Choose a valid penalty filter and page.");
+  const rows = await repo.listPenalties(db, {
+    memberId: OFFICERS.includes(actor.role) ? null : actor.memberId,
+    status,
+    offset,
+    limit: 51,
+  });
+  return {
+    hasMore: rows.length > 50,
+    penalties: rows.slice(0, 50).map((p) => ({
+      penaltyId: p.penalty_id,
+      fullName: p.full_name,
+      memberId: p.member_id,
+      cycleNumber: p.sequence_number,
+      amount: p.amount,
+      settledAmount: p.settled_amount,
+      outstandingAmount: p.waived_at
+        ? "0.00"
+        : toNumeric(toCents(p.amount) - toCents(p.settled_amount)),
+      reason: p.reason,
+      leviedAt: p.levied_at,
+      status: p.waived_at
+        ? "Waived"
+        : toCents(p.settled_amount) >= toCents(p.amount)
+          ? "Settled"
+          : "Outstanding",
+      waivedAt: p.waived_at,
+      waivedBy: p.waived_by_name,
+      waiverReason: p.waiver_reason,
+    })),
+  };
+}
+
 async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
-    const outcome = await withClubTransaction(db.clubId, async (tx, client) => {
-        const penalty = await repo.getPenalty(tx, penaltyId);
-        if (!penalty) return { notFound: true };
+  const outcome = await withClubTransaction(db.clubId, async (tx, client) => {
+    const penalty = await repo.getPenalty(tx, penaltyId);
+    if (!penalty) return { notFound: true };
 
-        const assessment = assessWaiver({ alreadyWaived: !!penalty.waived_at, reason });
-        if (!assessment.eligible) {
-            return { refused: assessment.refusals.map((r) => r.message).join(" "), detail: { refusals: assessment.refusals }, penalty };
-        }
-
-        const original = await repo.getPenaltyLedgerEntry(tx, penaltyId);
-        if (!original) {
-            // Defensive: every levied penalty posts its own entry (see the
-            // comment in captureContribution). Nothing in this codebase can
-            // reach this branch, but a silent no-op would be worse than a
-            // clear error if it ever did.
-            return { refused: "No ledger entry was found for this penalty. It cannot be waived without one to reverse.", detail: {} };
-        }
-
-        const entry = await ledger.appendEntry(client, {
-            clubId: tx.clubId,
-            memberId: penalty.member_id,
-            entryType: "Reversal",
-            amount: toNumeric(-toCents(original.amount)),
-            description: `Waived penalty${penalty.sequence_number ? `, cycle ${penalty.sequence_number}` : ""} — ${penalty.full_name}: ${String(reason).trim()}`,
-            reversesId: original.entry_id,
-            reason: String(reason).trim(),
-            penaltyId,
-            postedBy: actor.userId
-        });
-
-        await repo.markWaived(tx, penaltyId, { waivedBy: actor.userId, reason: String(reason).trim() });
-        return { penalty, entry };
+    const assessment = assessWaiver({
+      alreadyWaived: !!penalty.waived_at,
+      reason,
     });
-
-    if (outcome.notFound) throw new NotFound("That penalty was not found in this club.");
-    if (outcome.refused) {
-        await audit("penalty.waive", "Refused", {
-            detail: `Refused: ${outcome.refused}`,
-            targetType: "penalty",
-            targetId: penaltyId
-        });
-        throw new RuleRefusal(outcome.refused, outcome.detail);
+    if (!assessment.eligible) {
+      return {
+        refused: assessment.refusals.map((r) => r.message).join(" "),
+        detail: { refusals: assessment.refusals },
+        penalty,
+      };
     }
 
-    await audit("penalty.waive", "Success", {
-        detail:
-            `${actor.fullName} waived the penalty of ${format(toCents(outcome.penalty.amount))} against ` +
-            `${outcome.penalty.full_name}. Reason: ${String(reason).trim()}. Pool balance now ${format(toCents(outcome.entry.resultingBalance))}.`,
-        targetType: "penalty",
-        targetId: penaltyId
+    const original = await repo.getPenaltyLedgerEntry(tx, penaltyId);
+    if (!original) {
+      // Defensive: every levied penalty posts its own entry (see the
+      // comment in captureContribution). Nothing in this codebase can
+      // reach this branch, but a silent no-op would be worse than a
+      // clear error if it ever did.
+      return {
+        refused:
+          "No ledger entry was found for this penalty. It cannot be waived without one to reverse.",
+        detail: {},
+      };
+    }
+
+    const entry = await ledger.appendEntry(client, {
+      clubId: tx.clubId,
+      memberId: penalty.member_id,
+      entryType: "Reversal",
+      amount: toNumeric(-toCents(original.amount)),
+      description: `Waived penalty${penalty.sequence_number ? `, cycle ${penalty.sequence_number}` : ""} — ${penalty.full_name}: ${String(reason).trim()}`,
+      reversesId: original.entry_id,
+      reason: String(reason).trim(),
+      penaltyId,
+      postedBy: actor.userId,
     });
 
-    return {
-        penaltyId,
-        waivedAt: new Date().toISOString(),
-        waivedBy: actor.fullName,
-        reason: String(reason).trim(),
-        reversingEntryId: outcome.entry.entryId,
-        resultingBalance: outcome.entry.resultingBalance
-    };
+    await repo.markWaived(tx, penaltyId, {
+      waivedBy: actor.userId,
+      reason: String(reason).trim(),
+    });
+    return { penalty, entry };
+  });
+
+  if (outcome.notFound)
+    throw new NotFound("That penalty was not found in this club.");
+  if (outcome.refused) {
+    await audit("penalty.waive", "Refused", {
+      detail: `Refused: ${outcome.refused}`,
+      targetType: "penalty",
+      targetId: penaltyId,
+    });
+    throw new RuleRefusal(outcome.refused, outcome.detail);
+  }
+
+  await audit("penalty.waive", "Success", {
+    detail:
+      `${actor.fullName} waived the penalty of ${format(toCents(outcome.penalty.amount))} against ` +
+      `${outcome.penalty.full_name}. Reason: ${String(reason).trim()}. Pool balance now ${format(toCents(outcome.entry.resultingBalance))}.`,
+    targetType: "penalty",
+    targetId: penaltyId,
+  });
+
+  return {
+    penaltyId,
+    waivedAt: new Date().toISOString(),
+    waivedBy: actor.fullName,
+    reason: String(reason).trim(),
+    reversingEntryId: outcome.entry.entryId,
+    resultingBalance: outcome.entry.resultingBalance,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -550,80 +684,126 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // REQ-53: 5 MB
  *                       definition of what a file upload looks like.
  */
 async function uploadProof(db, contributionId, file, { actor, audit }) {
-    const contribution = await repo.getContribution(db, contributionId);
-    if (!contribution) throw new NotFound("That contribution was not found in this club.");
+  const contribution = await repo.getContribution(db, contributionId);
+  if (!contribution)
+    throw new NotFound("That contribution was not found in this club.");
 
-    if (!file) throw new BadRequest("Attach a file.");
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-        throw new BadRequest("Only JPEG, PNG or PDF files are accepted (REQ-53).");
-    }
-    if (file.size > MAX_FILE_SIZE) {
-        throw new BadRequest(`That file is too large. The limit is 5 MB (REQ-53); this one is ${(file.size / (1024 * 1024)).toFixed(1)} MB.`);
-    }
+  if (toCents(contribution.captured_amount) <= 0)
+    throw new RuleRefusal(
+      "Capture a contribution before attaching proof of payment (REQ-53).",
+    );
+  if (!file || !file.size) throw new BadRequest("Attach a non-empty file.");
+  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    throw new BadRequest("Only JPEG, PNG or PDF files are accepted (REQ-53).");
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    throw new BadRequest(
+      `That file is too large. The limit is 5 MB (REQ-53); this one is ${(file.size / (1024 * 1024)).toFixed(1)} MB.`,
+    );
+  }
 
-    const saved = await withClubTransaction(db.clubId, (tx) => repo.upsertProof(tx, contributionId, {
-        fileData: file.buffer,
-        mimeType: file.mimetype,
-        originalFilename: file.originalname.slice(0, 255),
-        fileSize: file.size,
-        uploadedBy: actor.userId
-    }));
+  const b = file.buffer;
+  const signature =
+    file.mimetype === "application/pdf"
+      ? b.subarray(0, 5).toString() === "%PDF-"
+      : file.mimetype === "image/png"
+        ? b
+            .subarray(0, 8)
+            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        : b.length >= 3 && b[0] === 255 && b[1] === 216 && b[2] === 255;
+  if (!signature)
+    throw new BadRequest(
+      "The file contents do not match its JPEG, PNG or PDF type.",
+    );
+  const saved = await withClubTransaction(db.clubId, (tx) =>
+    repo.upsertProof(tx, contributionId, {
+      fileData: file.buffer,
+      mimeType: file.mimetype,
+      originalFilename: file.originalname.slice(0, 255),
+      fileSize: file.size,
+      uploadedBy: actor.userId,
+    }),
+  );
 
-    await audit("contribution.uploadProof", "Success", {
-        detail: `${actor.fullName} attached ${saved.original_filename} (${(saved.file_size / 1024).toFixed(0)} KB) as proof of payment for ${contribution.full_name}'s contribution.`,
-        targetType: "contribution",
-        targetId: contributionId
-    });
+  await audit("contribution.uploadProof", "Success", {
+    detail: `${actor.fullName} attached ${saved.original_filename} (${(saved.file_size / 1024).toFixed(0)} KB) as proof of payment for ${contribution.full_name}'s contribution.`,
+    targetType: "contribution",
+    targetId: contributionId,
+  });
 
-    return {
-        proofId: saved.proof_id,
-        filename: saved.original_filename,
-        mimeType: saved.mime_type,
-        fileSize: saved.file_size,
-        uploadedAt: saved.uploaded_at
-    };
+  return {
+    proofId: saved.proof_id,
+    filename: saved.original_filename,
+    mimeType: saved.mime_type,
+    fileSize: saved.file_size,
+    uploadedAt: saved.uploaded_at,
+  };
 }
 
-async function getProofMeta(db, contributionId) {
-    const meta = await repo.getProofMeta(db, contributionId);
-    if (!meta) return null;
-    return {
-        proofId: meta.proof_id,
-        filename: meta.original_filename,
-        mimeType: meta.mime_type,
-        fileSize: meta.file_size,
-        uploadedAt: meta.uploaded_at
-    };
+async function assertProofAccess(db, contributionId, actor) {
+  const contribution = await repo.getContribution(db, contributionId);
+  if (
+    !contribution ||
+    (!OFFICERS.includes(actor?.role) &&
+      contribution.member_id !== actor?.memberId)
+  ) {
+    throw new NotFound(
+      "That contribution was not found in your accessible records.",
+    );
+  }
+}
+
+async function getProofMeta(db, contributionId, { actor }) {
+  await assertProofAccess(db, contributionId, actor);
+  const meta = await repo.getProofMeta(db, contributionId);
+  if (!meta) return null;
+  return {
+    proofId: meta.proof_id,
+    filename: meta.original_filename,
+    mimeType: meta.mime_type,
+    fileSize: meta.file_size,
+    uploadedAt: meta.uploaded_at,
+  };
 }
 
 /** The raw bytes for a download response. Route sets the content type and disposition. */
-async function downloadProof(db, contributionId) {
-    const file = await repo.getProofFile(db, contributionId);
-    if (!file) throw new NotFound("No proof of payment has been uploaded for this contribution.");
-    return file;
+async function downloadProof(db, contributionId, { actor }) {
+  await assertProofAccess(db, contributionId, actor);
+  const file = await repo.getProofFile(db, contributionId);
+  if (!file)
+    throw new NotFound(
+      "No proof of payment has been uploaded for this contribution.",
+    );
+  return file;
 }
 
 async function deleteProof(db, contributionId, { actor, audit }) {
-    const meta = await repo.getProofMeta(db, contributionId);
-    if (!meta) throw new NotFound("No proof of payment has been uploaded for this contribution.");
-    await withClubTransaction(db.clubId, (tx) => repo.deleteProof(tx, contributionId));
-    await audit("contribution.deleteProof", "Success", {
-        detail: `${actor.fullName} removed the proof of payment (${meta.original_filename}).`,
-        targetType: "contribution",
-        targetId: contributionId
-    });
-    return { deleted: true };
+  const meta = await repo.getProofMeta(db, contributionId);
+  if (!meta)
+    throw new NotFound(
+      "No proof of payment has been uploaded for this contribution.",
+    );
+  await withClubTransaction(db.clubId, (tx) =>
+    repo.deleteProof(tx, contributionId),
+  );
+  await audit("contribution.deleteProof", "Success", {
+    detail: `${actor.fullName} removed the proof of payment (${meta.original_filename}).`,
+    targetType: "contribution",
+    targetId: contributionId,
+  });
+  return { deleted: true };
 }
 
 module.exports = {
-    openCycle,
-    captureContribution,
-    applyExcess,
-    listCycles,
-    getCycleDetail,
-    waivePenalty,
-    uploadProof,
-    getProofMeta,
-    downloadProof,
-    deleteProof
+  openCycle,
+  captureContribution,
+  applyExcess,
+  listCycles,
+  getCycleDetail,
+  listPenalties,
+  waivePenalty,
+  uploadProof,
+  getProofMeta,
+  downloadProof,
+  deleteProof,
 };

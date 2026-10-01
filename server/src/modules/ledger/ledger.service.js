@@ -143,6 +143,7 @@ async function listEntries(db, { memberId = null, limit = 100 } = {}) {
   return db.many(
     `SELECT l.entry_id, l.entry_type, l.amount, l.resulting_balance,
                 l.description, l.reference, l.reverses_id, l.reason, l.posted_at,
+                (SELECT r.entry_id FROM ledger_entry r WHERE r.club_id=l.club_id AND r.reverses_id=l.entry_id) AS reversed_by,
                 u.full_name AS posted_by_name,
                 mu.full_name AS member_name
            FROM ledger_entry l
@@ -173,7 +174,7 @@ async function listEntries(db, { memberId = null, limit = 100 } = {}) {
  */
 async function generateMemberStatement(db, memberId) {
   const member = await db.one(
-    `SELECT m.member_id, m.role, m.standing, m.join_date, m.queue_position,
+    `SELECT m.member_id, m.role, m.standing, m.join_date::text AS join_date, m.queue_position,
                 m.catch_up_amount, m.credit_amount,
                 u.full_name, u.phone,
                 c.name AS club_name, c.club_type
@@ -227,10 +228,10 @@ async function generateMemberStatement(db, memberId) {
   // Outstanding contributions, so the statement answers "do I owe anything"
   // as well as "what have I paid".
   const owing = await db.one(
-    `SELECT COALESCE(sum(expected_amount - captured_amount), 0) AS outstanding,
-                count(*) FILTER (WHERE captured_amount < expected_amount)::int AS unpaid_cycles
+    `SELECT COALESCE(sum(expected_amount - captured_amount - written_off_amount), 0) AS outstanding,
+                count(*) FILTER (WHERE captured_amount < expected_amount - written_off_amount)::int AS unpaid_cycles
            FROM contribution
-          WHERE club_id = $1 AND member_id = $2 AND captured_amount < expected_amount`,
+          WHERE club_id = $1 AND member_id = $2 AND captured_amount < expected_amount - written_off_amount`,
     [db.clubId, memberId],
   );
 

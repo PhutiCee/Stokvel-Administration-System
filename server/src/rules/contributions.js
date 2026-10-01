@@ -10,6 +10,9 @@
 
 const { toCents } = require("../lib/money");
 
+const { assertIsoDate, addDays, todayIso } = require('../lib/dates');
+const calendarDay = value => typeof value === 'string' ? assertIsoDate(value) : todayIso(value);
+
 const STATUSES = ["Paid", "Partial", "Outstanding", "Late"];
 
 /**
@@ -43,12 +46,8 @@ function resolveStatus({ expected, captured, dueDate, graceDays = 0, asAt = new 
     // punctuality — the penalty record carries that.
     if (capturedCents >= expectedCents) return "Paid";
 
-    const deadline = new Date(dueDate);
-    deadline.setDate(deadline.getDate() + Number(graceDays || 0));
-    // Grace runs to the END of its last day.
-    deadline.setHours(23, 59, 59, 999);
-
-    if (asAt > deadline) return "Late";
+    const deadline = addDays(calendarDay(dueDate), Number(graceDays || 0));
+    if (calendarDay(asAt) > deadline) return "Late";
 
     return capturedCents > 0 ? "Partial" : "Outstanding";
 }
@@ -58,9 +57,7 @@ function resolveStatus({ expected, captured, dueDate, graceDays = 0, asAt = new 
  * should be able to see the deadline rather than discover it.
  */
 function lateFrom(dueDate, graceDays = 0) {
-    const d = new Date(dueDate);
-    d.setDate(d.getDate() + Number(graceDays || 0) + 1);
-    return d;
+    return new Date(`${addDays(calendarDay(dueDate), Number(graceDays || 0) + 1)}T00:00:00Z`);
 }
 
 /** REQ-56: a penalty is due when the status has resolved to Late. */

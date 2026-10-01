@@ -1,4 +1,5 @@
 "use client";
+import { todayIso } from "@/lib/format";
 
 /**
  * The Platform Administrator's screen. REQ-18, REQ-19, REQ-20, REQ-21.
@@ -15,7 +16,16 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle, Building2, Users, Landmark, Plus, LogOut, Ban, RotateCcw, X, Check
+  AlertCircle,
+  Building2,
+  Users,
+  Landmark,
+  Plus,
+  LogOut,
+  Ban,
+  RotateCcw,
+  X,
+  Check,
 } from "lucide-react";
 import Wordmark from "@/components/Wordmark";
 import Button from "@/components/ui/Button";
@@ -45,7 +55,9 @@ export default function PlatformPage() {
       setError(null);
     } catch (err) {
       if (err.name === "AbortError") return;
-      setError(err instanceof ApiError ? err.message : "Could not load the platform.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not load the platform.",
+      );
     }
   }, []);
 
@@ -89,7 +101,10 @@ export default function PlatformPage() {
         <div className="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Wordmark href={null} subdued />
-            <Badge tone="neutral" className="bg-white/10 text-white/80 ring-white/20">
+            <Badge
+              tone="neutral"
+              className="bg-white/10 text-white/80 ring-white/20"
+            >
               Platform
             </Badge>
           </div>
@@ -113,13 +128,19 @@ export default function PlatformPage() {
               Good day{user?.fullName ? `, ${user.fullName.split(" ")[0]}` : ""}
             </h1>
             <p className="mt-1 text-[14px] text-ink-500 max-w-[62ch] leading-relaxed">
-              You provision and suspend clubs. You do not have access to any club&rsquo;s members,
-              contributions or ledger — the figures below are platform totals and are the only
-              financial information this role can see.
+              You provision and suspend clubs. You do not have access to any
+              club&rsquo;s members, contributions or ledger — the figures below
+              are platform totals and are the only financial information this
+              role can see.
             </p>
           </div>
           {!creating && (
-            <Button onClick={() => { setCreating(true); setCreated(null); }}>
+            <Button
+              onClick={() => {
+                setCreating(true);
+                setCreated(null);
+              }}
+            >
               <Plus size={15} aria-hidden />
               Provision a club
             </Button>
@@ -127,10 +148,17 @@ export default function PlatformPage() {
         </div>
 
         {error && (
-          <Alert tone="exception" icon={AlertCircle} className="mb-5">{error}</Alert>
+          <Alert tone="exception" icon={AlertCircle} className="mb-5">
+            {error}
+          </Alert>
         )}
 
-        {created && <ProvisionedNotice result={created} onDismiss={() => setCreated(null)} />}
+        {created && (
+          <ProvisionedNotice
+            result={created}
+            onDismiss={() => setCreated(null)}
+          />
+        )}
 
         {creating ? (
           <ProvisionClub
@@ -147,6 +175,15 @@ export default function PlatformPage() {
               <Stat
                 icon={Building2}
                 label="Clubs"
+                detail={
+                  <ul>
+                    {data.clubs.map((c) => (
+                      <li key={c.clubId}>
+                        {c.name}: {c.status}
+                      </li>
+                    ))}
+                  </ul>
+                }
                 value={String(data.stats.clubCount)}
                 note={
                   data.stats.suspendedClubs > 0
@@ -156,15 +193,33 @@ export default function PlatformPage() {
               />
               <Stat
                 icon={Users}
-                label="Members"
+                label="Current members"
+                detail={
+                  <ul>
+                    {data.stats.memberBreakdown.map((r) => (
+                      <li key={r.standing}>
+                        {r.standing}: {r.count}
+                      </li>
+                    ))}
+                  </ul>
+                }
                 value={String(data.stats.memberCount)}
                 note={`Across ${data.stats.accountCount} accounts.`}
               />
               <Stat
                 icon={Landmark}
                 label="Funds under administration"
+                detail={
+                  <ul>
+                    {data.stats.fundsBreakdown.map((r) => (
+                      <li key={r.category}>
+                        {r.category}: {money(r.amount)}
+                      </li>
+                    ))}
+                  </ul>
+                }
                 value={money(data.stats.fundsUnderAdministration)}
-                note="Every club combined. No breakdown is available to this role."
+                note="All clubs combined. Detail is aggregated by ledger category only."
               />
             </div>
 
@@ -183,22 +238,35 @@ export default function PlatformPage() {
                     <Card className="px-5 py-4 flex flex-wrap items-center gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[14px] font-medium text-ink-900 truncate">{c.name}</p>
-                          {c.status === "Suspended" && <Badge tone="exception">Suspended</Badge>}
+                          <p className="text-[14px] font-medium text-ink-900 truncate">
+                            {c.name}
+                          </p>
+                          {c.status === "Suspended" && (
+                            <Badge tone="exception">Suspended</Badge>
+                          )}
                         </div>
                         <p className="text-[12.5px] text-ink-500">
                           {c.clubType} · {c.memberCount} members
-                          {c.town ? ` · ${c.town}` : ""} · since {fmtDate(c.registrationDate)}
+                          {c.town ? ` · ${c.town}` : ""} · since{" "}
+                          {fmtDate(c.registrationDate)}
                         </p>
                       </div>
 
                       {c.status === "Active" ? (
-                        <Button variant="secondary" size="sm" onClick={() => setSuspending(c)}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setSuspending(c)}
+                        >
                           <Ban size={13} aria-hidden />
                           Suspend
                         </Button>
                       ) : (
-                        <Button variant="secondary" size="sm" onClick={() => reinstate(c)}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => reinstate(c)}
+                        >
                           <RotateCcw size={13} aria-hidden />
                           Reinstate
                         </Button>
@@ -226,15 +294,27 @@ export default function PlatformPage() {
   );
 }
 
-function Stat({ icon: Icon, label, value, note }) {
+function Stat({ icon: Icon, label, value, note, detail }) {
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[13px] font-medium text-ink-500">{label}</p>
         <Icon size={15} className="text-ink-400 shrink-0" aria-hidden />
       </div>
-      <p className="mt-2 font-mono tnum text-[24px] leading-none font-medium text-ink-900">{value}</p>
-      {note && <p className="mt-2 text-[12.5px] text-ink-500 leading-relaxed">{note}</p>}
+      <p className="mt-2 font-mono tnum text-[24px] leading-none font-medium text-ink-900">
+        {value}
+      </p>
+      {note && (
+        <p className="mt-2 text-[12.5px] text-ink-500 leading-relaxed">
+          {note}
+        </p>
+      )}
+      {detail && (
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer">View source totals</summary>
+          {detail}
+        </details>
+      )}
     </Card>
   );
 }
@@ -249,10 +329,12 @@ function ProvisionedNotice({ result, onDismiss }) {
           <Check size={16} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-medium text-ink-900">{result.name} is provisioned</p>
+          <p className="text-[14px] font-medium text-ink-900">
+            {result.name} is provisioned
+          </p>
           <p className="text-[13px] text-ink-700 mt-0.5">
-            {result.chairperson.fullName} is its chairperson and can now sign in to capture the
-            member register.
+            {result.chairperson.fullName} is its chairperson and can now sign in
+            to capture the member register.
           </p>
           {result.chairperson.temporaryPassword && (
             <div className="mt-3 rounded-lg border border-warn-600/25 bg-warn-50 p-3">
@@ -305,14 +387,22 @@ function SuspendDialog({ club, onClose, onDone }) {
       aria-label={`Suspend ${club.name}`}
     >
       <Card className="w-full max-w-md p-5 shadow-pop animate-slideUp">
-        <h2 className="text-sm font-semibold text-ink-900">Suspend {club.name}</h2>
+        <h2 className="text-sm font-semibold text-ink-900">
+          Suspend {club.name}
+        </h2>
         <p className="mt-1.5 text-[13px] text-ink-500 leading-relaxed">
-          The club&rsquo;s officers will not be able to capture contributions, open cycles or make
-          payouts. Its members keep read access to their own records throughout.
+          The club&rsquo;s officers will not be able to capture contributions,
+          open cycles or make payouts. Its members keep read access to their own
+          records throughout.
         </p>
 
         <div className="mt-4">
-          <Field label="Reason" htmlFor="reason" required hint="Recorded in the audit log.">
+          <Field
+            label="Reason"
+            htmlFor="reason"
+            required
+            hint="Recorded in the audit log."
+          >
             <Textarea
               id="reason"
               value={reason}
@@ -322,11 +412,19 @@ function SuspendDialog({ club, onClose, onDone }) {
           </Field>
         </div>
 
-        {error && <Alert tone="exception" icon={AlertCircle} className="mt-3">{error}</Alert>}
+        {error && (
+          <Alert tone="exception" icon={AlertCircle} className="mt-3">
+            {error}
+          </Alert>
+        )}
 
         <div className="mt-5 flex gap-2 justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="danger" onClick={submit} loading={busy}>Suspend the club</Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={submit} loading={busy}>
+            Suspend the club
+          </Button>
         </div>
       </Card>
     </div>
@@ -336,12 +434,28 @@ function SuspendDialog({ club, onClose, onDone }) {
 // ---------------------------------------------------------------------------
 
 const EMPTY = {
-  name: "", shortName: "", clubType: "Rotating", town: "",
-  contributionAmount: "", cycleFrequency: "Monthly", cycleStartDate: new Date().toISOString().slice(0, 10),
-  penaltyAmount: "", gracePeriodDays: 5, quorumPercentage: 50, exitNoticeDays: 30,
-  payoutOrderMethod: "Random draw", forfeitureRule: "",
-  waitingPeriodDays: 180, benefitSchedule: [{ category: "Principal member", amount: "" }],
-  chairperson: { fullName: "", phone: "", idNumber: "", email: "", postalAddress: "" }
+  name: "",
+  shortName: "",
+  clubType: "Rotating",
+  town: "",
+  contributionAmount: "",
+  cycleFrequency: "Monthly",
+  cycleStartDate: todayIso(),
+  penaltyAmount: "",
+  gracePeriodDays: 5,
+  quorumPercentage: 50,
+  exitNoticeDays: 30,
+  payoutOrderMethod: "Random draw",
+  forfeitureRule: "",
+  waitingPeriodDays: 180,
+  benefitSchedule: [{ category: "Principal member", amount: "" }],
+  chairperson: {
+    fullName: "",
+    phone: "",
+    idNumber: "",
+    email: "",
+    postalAddress: "",
+  },
 };
 
 function ProvisionClub({ onCancel, onDone }) {
@@ -355,7 +469,10 @@ function ProvisionClub({ onCancel, onDone }) {
     setFields((f) => ({ ...f, [k]: undefined }));
   };
   const setChair = (k) => (e) =>
-    setForm((f) => ({ ...f, chairperson: { ...f.chairperson, [k]: e.target.value } }));
+    setForm((f) => ({
+      ...f,
+      chairperson: { ...f.chairperson, [k]: e.target.value },
+    }));
 
   const setBenefit = (i, k) => (e) =>
     setForm((f) => {
@@ -371,7 +488,8 @@ function ProvisionClub({ onCancel, onDone }) {
     try {
       onDone(await api.createClub(form));
     } catch (err) {
-      if (err instanceof ApiError && err.detail?.fields) setFields(err.detail.fields);
+      if (err instanceof ApiError && err.detail?.fields)
+        setFields(err.detail.fields);
       else setError(err.message);
       setBusy(false);
     }
@@ -383,147 +501,348 @@ function ProvisionClub({ onCancel, onDone }) {
         <div>
           <h2 className="text-sm font-semibold text-ink-900">The club</h2>
           <div className="mt-3 grid sm:grid-cols-2 gap-4">
-            <Field label="Full name" htmlFor="name" required error={fields.name} className="sm:col-span-2">
-              <Input id="name" value={form.name} onChange={set("name")} invalid={!!fields.name} />
+            <Field
+              label="Full name"
+              htmlFor="name"
+              required
+              error={fields.name}
+              className="sm:col-span-2"
+            >
+              <Input
+                id="name"
+                value={form.name}
+                onChange={set("name")}
+                invalid={!!fields.name}
+              />
             </Field>
-            <Field label="Short name" htmlFor="shortName" required error={fields.shortName} hint="For headings and lists.">
-              <Input id="shortName" value={form.shortName} onChange={set("shortName")} invalid={!!fields.shortName} />
+            <Field
+              label="Short name"
+              htmlFor="shortName"
+              required
+              error={fields.shortName}
+              hint="For headings and lists."
+            >
+              <Input
+                id="shortName"
+                value={form.shortName}
+                onChange={set("shortName")}
+                invalid={!!fields.shortName}
+              />
             </Field>
             <Field label="Town" htmlFor="town">
               <Input id="town" value={form.town} onChange={set("town")} />
             </Field>
             <Field label="Type" htmlFor="clubType" error={fields.clubType}>
-              <Select id="clubType" value={form.clubType} onChange={set("clubType")}>
-                {CLUB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              <Select
+                id="clubType"
+                value={form.clubType}
+                onChange={set("clubType")}
+              >
+                {CLUB_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </Select>
             </Field>
           </div>
         </div>
 
         <div className="pt-4 border-t border-line">
-          <h2 className="text-sm font-semibold text-ink-900">The constitution</h2>
+          <h2 className="text-sm font-semibold text-ink-900">
+            The constitution
+          </h2>
           <p className="text-[12.5px] text-ink-500 mt-0.5">
-            Version 1, as adopted at formation. Amendments create new versions rather than changing
-            this one.
+            Version 1, as adopted at formation. Amendments create new versions
+            rather than changing this one.
           </p>
 
           <div className="mt-3 grid sm:grid-cols-2 gap-4">
-            <Field label="Contribution" htmlFor="contributionAmount" required error={fields.contributionAmount}>
-              <Input id="contributionAmount" inputMode="decimal" className="font-mono tnum"
-                value={form.contributionAmount} onChange={set("contributionAmount")}
-                invalid={!!fields.contributionAmount} />
+            <Field
+              label="Contribution"
+              htmlFor="contributionAmount"
+              required
+              error={fields.contributionAmount}
+            >
+              <Input
+                id="contributionAmount"
+                inputMode="decimal"
+                className="font-mono tnum"
+                value={form.contributionAmount}
+                onChange={set("contributionAmount")}
+                invalid={!!fields.contributionAmount}
+              />
             </Field>
-            <Field label="How often" htmlFor="cycleFrequency" error={fields.cycleFrequency}>
-              <Select id="cycleFrequency" value={form.cycleFrequency} onChange={set("cycleFrequency")}>
-                {FREQUENCIES.map((f) => <option key={f} value={f}>{f}</option>)}
+            <Field
+              label="How often"
+              htmlFor="cycleFrequency"
+              error={fields.cycleFrequency}
+            >
+              <Select
+                id="cycleFrequency"
+                value={form.cycleFrequency}
+                onChange={set("cycleFrequency")}
+              >
+                {FREQUENCIES.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
               </Select>
             </Field>
-            <Field label="Late penalty" htmlFor="penaltyAmount" error={fields.penaltyAmount}>
-              <Input id="penaltyAmount" inputMode="decimal" className="font-mono tnum"
-                value={form.penaltyAmount} onChange={set("penaltyAmount")} invalid={!!fields.penaltyAmount} />
+            <Field
+              label="Late penalty"
+              htmlFor="penaltyAmount"
+              error={fields.penaltyAmount}
+            >
+              <Input
+                id="penaltyAmount"
+                inputMode="decimal"
+                className="font-mono tnum"
+                value={form.penaltyAmount}
+                onChange={set("penaltyAmount")}
+                invalid={!!fields.penaltyAmount}
+              />
             </Field>
-            <Field label="Grace period (days)" htmlFor="gracePeriodDays" error={fields.gracePeriodDays}
-              hint="Must be shorter than one cycle.">
-              <Input id="gracePeriodDays" type="number" min="0" className="font-mono tnum"
-                value={form.gracePeriodDays} onChange={set("gracePeriodDays")} invalid={!!fields.gracePeriodDays} />
+            <Field
+              label="Grace period (days)"
+              htmlFor="gracePeriodDays"
+              error={fields.gracePeriodDays}
+              hint="Must be shorter than one cycle."
+            >
+              <Input
+                id="gracePeriodDays"
+                type="number"
+                min="0"
+                className="font-mono tnum"
+                value={form.gracePeriodDays}
+                onChange={set("gracePeriodDays")}
+                invalid={!!fields.gracePeriodDays}
+              />
             </Field>
-            <Field label="Quorum (%)" htmlFor="quorumPercentage" error={fields.quorumPercentage}>
-              <Input id="quorumPercentage" type="number" min="1" max="100" className="font-mono tnum"
-                value={form.quorumPercentage} onChange={set("quorumPercentage")} invalid={!!fields.quorumPercentage} />
+            <Field
+              label="Quorum (%)"
+              htmlFor="quorumPercentage"
+              error={fields.quorumPercentage}
+            >
+              <Input
+                id="quorumPercentage"
+                type="number"
+                min="1"
+                max="100"
+                className="font-mono tnum"
+                value={form.quorumPercentage}
+                onChange={set("quorumPercentage")}
+                invalid={!!fields.quorumPercentage}
+              />
             </Field>
-            <Field label="Exit notice (days)" htmlFor="exitNoticeDays" error={fields.exitNoticeDays}>
-              <Input id="exitNoticeDays" type="number" min="0" className="font-mono tnum"
-                value={form.exitNoticeDays} onChange={set("exitNoticeDays")} />
+            <Field
+              label="Exit notice (days)"
+              htmlFor="exitNoticeDays"
+              error={fields.exitNoticeDays}
+            >
+              <Input
+                id="exitNoticeDays"
+                type="number"
+                min="0"
+                className="font-mono tnum"
+                value={form.exitNoticeDays}
+                onChange={set("exitNoticeDays")}
+              />
             </Field>
 
             {form.clubType === "Rotating" && (
-              <Field label="Payout order" htmlFor="payoutOrderMethod" error={fields.payoutOrderMethod}
-                className="sm:col-span-2">
-                <Select id="payoutOrderMethod" value={form.payoutOrderMethod} onChange={set("payoutOrderMethod")}>
-                  {ORDER_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              <Field
+                label="Payout order"
+                htmlFor="payoutOrderMethod"
+                error={fields.payoutOrderMethod}
+                className="sm:col-span-2"
+              >
+                <Select
+                  id="payoutOrderMethod"
+                  value={form.payoutOrderMethod}
+                  onChange={set("payoutOrderMethod")}
+                >
+                  {ORDER_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
                 </Select>
               </Field>
             )}
 
             {form.clubType === "Burial" && (
               <>
-                <Field label="Waiting period (days)" htmlFor="waitingPeriodDays" error={fields.waitingPeriodDays}
-                  hint="Before a claim may be lodged.">
-                  <Input id="waitingPeriodDays" type="number" min="0" className="font-mono tnum"
-                    value={form.waitingPeriodDays} onChange={set("waitingPeriodDays")} />
+                <Field
+                  label="Waiting period (days)"
+                  htmlFor="waitingPeriodDays"
+                  error={fields.waitingPeriodDays}
+                  hint="Before a claim may be lodged."
+                >
+                  <Input
+                    id="waitingPeriodDays"
+                    type="number"
+                    min="0"
+                    className="font-mono tnum"
+                    value={form.waitingPeriodDays}
+                    onChange={set("waitingPeriodDays")}
+                  />
                 </Field>
                 <div className="sm:col-span-2">
                   <p className="text-[13px] font-medium text-ink-700 mb-2">
                     Benefit schedule
-                    <span className="text-exc-600 ml-0.5" aria-hidden>*</span>
+                    <span className="text-exc-600 ml-0.5" aria-hidden>
+                      *
+                    </span>
                   </p>
                   {form.benefitSchedule.map((row, i) => (
                     <div key={i} className="grid grid-cols-2 gap-3 mb-2">
-                      <Input aria-label="Category" placeholder="Category, e.g. Spouse"
-                        value={row.category} onChange={setBenefit(i, "category")} />
-                      <Input aria-label="Benefit amount" inputMode="decimal" className="font-mono tnum"
-                        placeholder="Amount" value={row.amount} onChange={setBenefit(i, "amount")} />
+                      <Input
+                        aria-label="Category"
+                        placeholder="Category, e.g. Spouse"
+                        value={row.category}
+                        onChange={setBenefit(i, "category")}
+                      />
+                      <Input
+                        aria-label="Benefit amount"
+                        inputMode="decimal"
+                        className="font-mono tnum"
+                        placeholder="Amount"
+                        value={row.amount}
+                        onChange={setBenefit(i, "amount")}
+                      />
                     </div>
                   ))}
-                  <Button variant="ghost" size="sm"
-                    onClick={() => setForm((f) => ({
-                      ...f, benefitSchedule: [...f.benefitSchedule, { category: "", amount: "" }]
-                    }))}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        benefitSchedule: [
+                          ...f.benefitSchedule,
+                          { category: "", amount: "" },
+                        ],
+                      }))
+                    }
+                  >
                     <Plus size={13} aria-hidden />
                     Add a category
                   </Button>
                   {fields.benefitSchedule && (
-                    <p className="text-[12px] text-exc-600 mt-1.5">{fields.benefitSchedule}</p>
+                    <p className="text-[12px] text-exc-600 mt-1.5">
+                      {fields.benefitSchedule}
+                    </p>
                   )}
                 </div>
               </>
             )}
 
-            <Field label="Forfeiture rule on exit" htmlFor="forfeitureRule" className="sm:col-span-2">
-              <Textarea id="forfeitureRule" value={form.forfeitureRule} onChange={set("forfeitureRule")}
-                placeholder="What a member forfeits if they leave early." />
+            <Field
+              label="Forfeiture rule on exit"
+              htmlFor="forfeitureRule"
+              className="sm:col-span-2"
+            >
+              <Textarea
+                id="forfeitureRule"
+                value={form.forfeitureRule}
+                onChange={set("forfeitureRule")}
+                placeholder="What a member forfeits if they leave early."
+              />
             </Field>
           </div>
         </div>
 
         <div className="pt-4 border-t border-line">
-          <h2 className="text-sm font-semibold text-ink-900">The founding chairperson</h2>
+          <h2 className="text-sm font-semibold text-ink-900">
+            The founding chairperson
+          </h2>
           <p className="text-[12.5px] text-ink-500 mt-0.5">
-            A club must have a chairperson at all times, so one is appointed now. They will register
-            the rest of the members themselves.
+            A club must have a chairperson at all times, so one is appointed
+            now. They will register the rest of the members themselves.
           </p>
 
           <div className="mt-3 grid sm:grid-cols-2 gap-4">
-            <Field label="Full name" htmlFor="chairName" required error={fields["chairperson.fullName"]}>
-              <Input id="chairName" value={form.chairperson.fullName} onChange={setChair("fullName")}
-                invalid={!!fields["chairperson.fullName"]} />
+            <Field
+              label="Full name"
+              htmlFor="chairName"
+              required
+              error={fields["chairperson.fullName"]}
+            >
+              <Input
+                id="chairName"
+                value={form.chairperson.fullName}
+                onChange={setChair("fullName")}
+                invalid={!!fields["chairperson.fullName"]}
+              />
             </Field>
-            <Field label="Phone number" htmlFor="chairPhone" required error={fields["chairperson.phone"]}>
-              <Input id="chairPhone" type="tel" placeholder="082 444 8899"
-                value={form.chairperson.phone} onChange={setChair("phone")}
-                invalid={!!fields["chairperson.phone"]} />
+            <Field
+              label="Phone number"
+              htmlFor="chairPhone"
+              required
+              error={fields["chairperson.phone"]}
+            >
+              <Input
+                id="chairPhone"
+                type="tel"
+                placeholder="082 444 8899"
+                value={form.chairperson.phone}
+                onChange={setChair("phone")}
+                invalid={!!fields["chairperson.phone"]}
+              />
             </Field>
             <Field label="Identity number" htmlFor="chairId">
-              <Input id="chairId" inputMode="numeric" className="font-mono tnum"
-                value={form.chairperson.idNumber} onChange={setChair("idNumber")} />
+              <Input
+                id="chairId"
+                inputMode="numeric"
+                className="font-mono tnum"
+                value={form.chairperson.idNumber}
+                onChange={setChair("idNumber")}
+              />
             </Field>
-            <Field label="Email" htmlFor="chairEmail" error={fields["chairperson.email"]}>
-              <Input id="chairEmail" type="email" value={form.chairperson.email} onChange={setChair("email")}
-                invalid={!!fields["chairperson.email"]} />
+            <Field
+              label="Email"
+              htmlFor="chairEmail"
+              error={fields["chairperson.email"]}
+            >
+              <Input
+                id="chairEmail"
+                type="email"
+                value={form.chairperson.email}
+                onChange={setChair("email")}
+                invalid={!!fields["chairperson.email"]}
+              />
             </Field>
-            <Field label="Postal address" htmlFor="chairPostal" className="sm:col-span-2"
-              hint="An email address or a postal address is required.">
-              <Input id="chairPostal" value={form.chairperson.postalAddress} onChange={setChair("postalAddress")} />
+            <Field
+              label="Postal address"
+              htmlFor="chairPostal"
+              className="sm:col-span-2"
+              hint="An email address or a postal address is required."
+            >
+              <Input
+                id="chairPostal"
+                value={form.chairperson.postalAddress}
+                onChange={setChair("postalAddress")}
+              />
             </Field>
           </div>
         </div>
       </Card>
 
-      {error && <Alert tone="exception" icon={AlertCircle} className="mt-4">{error}</Alert>}
+      {error && (
+        <Alert tone="exception" icon={AlertCircle} className="mt-4">
+          {error}
+        </Alert>
+      )}
 
       <div className="mt-5 flex gap-3">
-        <Button onClick={submit} loading={busy}>Provision the club</Button>
-        <Button variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button onClick={submit} loading={busy}>
+          Provision the club
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
       </div>
     </div>
   );

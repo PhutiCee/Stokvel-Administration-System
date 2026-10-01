@@ -22,41 +22,58 @@ const { BadRequest } = require("../../lib/errors");
 const router = express.Router();
 router.use(requirePlatformAdmin);
 
-router.get("/", asyncRoute(async (req, res) => {
-    const [stats, clubs] = await Promise.all([service.aggregate(), service.listClubs()]);
-    res.json({ stats, clubs });
-}));
+router.get(
+  "/",
+  asyncRoute(async (req, res) => {
+    res.json(await service.overview());
+  }),
+);
 
-router.post("/clubs", asyncRoute(async (req, res) => {
+router.post(
+  "/clubs",
+  asyncRoute(async (req, res) => {
     const result = await service.createClub(req.body || {}, {
-        actor: req.actor, audit: req.audit
+      actor: req.actor,
+      audit: req.audit,
     });
     res.status(201).json(result);
-}));
+  }),
+);
 
-router.patch("/clubs/:clubId", asyncRoute(async (req, res) => {
+router.patch(
+  "/clubs/:clubId",
+  asyncRoute(async (req, res) => {
     const { status, reason } = req.body || {};
 
     if (status === "Suspended") {
-        // A suspension stops a club's members transacting, so the reason is
-        // recorded rather than left to memory.
-        if (!reason || !String(reason).trim()) {
-            throw new BadRequest("Record why this club is being suspended.", {
-                fields: { reason: "A reason is required." }
-            });
-        }
-        return res.json(await service.suspendClub(req.params.clubId, {
-            actor: req.actor, audit: req.audit, reason: String(reason).trim()
-        }));
+      // A suspension stops a club's members transacting, so the reason is
+      // recorded rather than left to memory.
+      if (!reason || !String(reason).trim()) {
+        throw new BadRequest("Record why this club is being suspended.", {
+          fields: { reason: "A reason is required." },
+        });
+      }
+      return res.json(
+        await service.suspendClub(req.params.clubId, {
+          actor: req.actor,
+          audit: req.audit,
+          reason: String(reason).trim(),
+        }),
+      );
     }
 
     if (status === "Active") {
-        return res.json(await service.reinstateClub(req.params.clubId, {
-            actor: req.actor, audit: req.audit, reason: reason || null
-        }));
+      return res.json(
+        await service.reinstateClub(req.params.clubId, {
+          actor: req.actor,
+          audit: req.audit,
+          reason: reason || null,
+        }),
+      );
     }
 
     throw new BadRequest("A club status must be either Active or Suspended.");
-}));
+  }),
+);
 
 module.exports = router;

@@ -60,7 +60,7 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-29 | Validate for internal consistency before activation | `rules/constitution.js` → `validateConsistency` | automated: grace ≥ cycle length, quorum outside 1–100, contribution ≤ 0 all refused |
 | REQ-30 | An amendment creates a new version; prior versions retained; effective date recorded | `constitution` unique on `(club_id, version)`; migration 010 triggers refuse `UPDATE` and `DELETE` and require consecutive version numbers with strictly later effective dates; `constitution.service.js` -> `createNewVersion` | database: `UPDATE`, `DELETE`, a version-number gap and a backwards effective date all raise; automated: `versioning.test.js` |
 | REQ-31 | Every rule evaluated against the version in force on the date of the transaction, not the current one | `rules/versioning.js` -> `versionInForce` (the single resolver); `constitution.service.js` -> `getVersionInForceOn`; `GET /api/constitution/in-force?date=` | automated: `versioning.test.js` (on, before and after an effective date; order independence; tie-break); `payouts.service.js` and `claims.service.js` both call the resolver. **Partial:** the contribution and penalty code still resolve the version with their own SQL |
-| REQ-32 | An amendment takes effect only after a resolution meeting quorum and majority | `createNewVersion` exists; it has no route by design | **not met yet.** The service is ready for governance to call. It is not exposed over HTTP until Use Case 7 records the resolution, so that no officer can amend without one |
+| REQ-32 | Amendment requires a carried, quorate resolution | `governance.service.giveEffect` + transactional `createNewVersion` | `test:governance`: advisory refusal, stale vote refusal, atomic rollback |
 | REQ-33 | An amendment applies prospectively only | `rules/versioning.js` -> `validateNewVersion` refuses an effective date in the past | automated: `versioning.test.js`. **Partial:** an amendment cannot be backdated, but a cycle already open when an amendment takes effect is not yet held on the old version |
 
 ## Membership
@@ -84,24 +84,23 @@ Requirements not listed are not yet implemented. They are collected at the end.
 | REQ-50 | Expected record for every member **in good standing** at cycle commencement | `contributions.service.js` → `openCycle`, `repo.membersForNewCycle` | manual |
 | REQ-51 | Capture amount, receipt date and method | `contributions.service.js` → `captureContribution` | automated (guards); manual (capture) |
 | REQ-52 | An electronic transfer must carry its reference | `rules/contributions.js` → `checkMethod` | automated |
-| REQ-53 | Upload a proof-of-payment file against a captured contribution: JPEG, PNG or PDF, at most 5 MB | `contributions.service.js` -> `uploadProof`, `downloadProof`, `deleteProof`; `POST/GET /api/contributions/:id/proof`; migration 015 (`proof_of_payment`, bytes stored in the database, type and size both checked again by CHECK constraints); `contribution.proof_url` kept in step | integration: an oversized file and a disallowed type are each refused with nothing stored; the exact bytes come back on download; a second upload replaces the first rather than accumulating; `proof_url` is set on upload and cleared on delete |
+| REQ-53 | Upload a proof-of-payment file against a captured contribution: JPEG, PNG or PDF, at most 5 MB | `contributions.service.js` -> `uploadProof`, `downloadProof`, `deleteProof`; `POST/GET /api/contributions/:id/proof`; migration 015 (`proof_of_payment`, bytes stored in the database, type and size both checked again by CHECK constraints); `contribution.proof_url` kept in step | integration: an oversized file and a disallowed type are each refused with nothing stored; the exact bytes come back on download; a second upload replaces the first rather than accumulating; `proof_url` is set on upload and cleared on delete ; T3 screen: `ProofPanel.js`, recent-cycle selector, member-only reads and signature checks; `integration/screens.js` covers actual HTTP uploads/downloads and access refusals |
 | REQ-54 | Status from the named set, recomputed on every capture | `rules/contributions.js` → `resolveStatus`; also recomputed on read | automated: nine boundary cases |
 | REQ-55 | Outstanding until due; Late once due date and grace have both elapsed | `resolveStatus` | automated: grace runs to the end of its last day |
 | REQ-56 | Penalty posted automatically on resolving to Late, once only | `captureContribution` uses the status **before** the payment; migration 009 unique index | database: `penalty_one_per_member_cycle`; manual: paying late in full still incurs it, twice does not |
 | REQ-57 | Excess applied to penalty, then prior arrears oldest first, then credit | `contributions.service.js` → `applyExcess` | manual: R2 000 against a R500 cycle splits across all three tiers, in order |
 | REQ-59 | Refuse capture against a closed cycle | `captureContribution` | manual: `RULE_REFUSAL` naming the reversing-entry route |
 | REQ-60 | Refuse an amount of zero or less | `rules/contributions.js` → `checkCaptureAmount` | automated |
-| REQ-63 | Chairperson may waive a penalty; a reason is required; posted as a reversing entry, never a deletion | `rules/penalties.js` → `assessWaiver`; `contributions.service.js` → `waivePenalty`; migration 014 | automated: `penalties.test.js`; database: a waiver with no reason raises `23514`, and a recorded waiver cannot be reworded or undone (`23001`); integration: the reversing entry exactly undoes the original amount, one reversal per entry, BR-13's double-waiver refused |
+| REQ-63 | Chairperson may waive a penalty; a reason is required; posted as a reversing entry, never a deletion | `rules/penalties.js` → `assessWaiver`; `contributions.service.js` → `waivePenalty`; migration 014 | automated: `penalties.test.js`; database: a waiver with no reason raises `23514`, and a recorded waiver cannot be reworded or undone (`23001`); integration: the reversing entry exactly undoes the original amount, one reversal per entry, BR-13's double-waiver refused ; T3 screen: `Penalties.js`, paged/filterable `GET /api/contributions/penalties`; `integration/screens.js` verifies role, reason, isolation and single reversal |
 
 ## Ledger
 
 | REQ | Requirement | Implemented in | Evidence |
 |---|---|---|---|
-| REQ-88 | Every financial event posted to the ledger | `ledger.service.js` → `appendEntry` | manual |
-| REQ-89 | Entries carry a running balance | `ledger_entry.resulting_balance`, computed under a club row lock | manual: the running balance reconciles line by line in date order |
+| REQ-89 | Every financial event records club, timestamp, type, member, amount, actor and resulting balance | `ledger.service.js` → `appendEntry`, club row lock | Ledger integration verifies reversal values and pool balance |
 | REQ-90 | No posted entry may be altered or removed | migration 006 triggers | database: `UPDATE` and `DELETE` both raise |
-| REQ-91 | Correction by reversing entry, with a reason | `reverses_id`, `reversal_needs_reason` constraint | database |
-| REQ-92 | Only the Treasurer may post | `rules/permissions.js` | automated |
+| REQ-91 | Equal/opposite correction with original reference and reason | `reversals.service.js`, migration 018, Ledger screen | `integration/ledger-reversals.js`: exact amount, duplicate guards, immutable original and rollback |
+| REQ-92 | Treasurer posts reversals; payout reversal needs prior Chairperson approval | `reversals.service.js`, `ledger.reverseApprove`, migration 018 | Real HTTP permissions and approval/posting tests; REQ-63 waiver exception recorded in decision 42 |
 | REQ-93 | Fixed-precision monetary arithmetic | `lib/money.js` (integer cents); `NUMERIC(12,2)` columns; the `pg` numeric parser is deliberately left returning strings | automated: `rules.test.js` |
 | REQ-94 | Member statement: every entry affecting them, chronological, running balance | `ledger.service.js` → `generateMemberStatement` | manual: a member reads their own; another member's is refused |
 | REQ-95 | Every member sees the club pool balance | `GET /api/ledger/pool`, permission `view.pool` | automated (permission); manual |
@@ -122,7 +121,7 @@ built, each authorising and posting through the same `payout` table.
 | REQ-68 | Record the initiator, approver, both timestamps and the rule applied | `payout` table columns; `eligibility_rule_applied`, `assessment_at_initiation`, `assessment_at_approval` | database: `payout_state_shape` and `payout_guard()` (migration 011) make the initiation facts immutable once approved |
 | REQ-69 | Notify the recipient on posting | not built | **not met yet.** Notifications (see Not yet implemented) are a separate service; the payout is complete without it |
 | REQ-70 | Treasurer may cancel an Initiated payout, with a reason | `payouts.service.js` -> `cancelPayout` | automated + integration: cancelling frees the cycle for a later payout; a reason is required; an Approved payout cannot be cancelled |
-| REQ-71 | Ordered payout queue, established by the constitution's method | `rules/queue.js` -> `drawOrder`, `seniorityOrder`, `checkProposedOrder`; `queue.service.js` -> `establishQueue` | automated: `queue.test.js`; integration: all three methods (Random draw, Seniority, Negotiated) against seeded data |
+| REQ-71 | Ordered payout queue, established by the constitution's method | `rules/queue.js` -> `drawOrder`, `seniorityOrder`, `checkProposedOrder`; `queue.service.js` -> `establishQueue` | automated: `queue.test.js`; integration: all three methods (Random draw, Seniority, Negotiated) against seeded data ; T3 screen: `NegotiatedOrder.js`; `integration/screens.js` verifies candidates, malformed/stale order refusal and exact saved order |
 | REQ-72 | Only the member at the head may be initiated | `rules/payouts.js` -> `assessRotationPayout` | automated + integration |
 | REQ-73 | Queue advances on posting; recipient goes to the end | `queue.service.js` -> `advanceAfterPayout`, called inside `approvePayout`'s transaction | integration: the paid member moves to the end, everyone else moves up one, in the same order |
 | REQ-74 | A member may request an exchange with a named other member; recorded pending | `queue.service.js` -> `requestSwap` | automated + integration |
@@ -201,6 +200,39 @@ cannot be removed at all once a live claim exists against them
 
 ---
 
+## Governance (Use Case 7)
+
+| Requirement | Behaviour | Implementation | Evidence |
+|---|---|---|---|
+| REQ-104 | Expulsion requires a carried resolution | `governance.service.giveEffect`, retained member row, queue removal and revoked club access | `test:governance`: expulsion, queue gap, last-officer refusal, session refusal |
+| REQ-105 | Meeting date, agenda, attendees and minutes | `/governance`, `recordMeeting`, migration 016 | Unit and isolated database/HTTP tests |
+| REQ-106 | Quorum from attendance and constitution | Frozen eligible count, required count, outcome and version | Unit: rounding/boundary; integration: snapshot |
+| REQ-107 | Non-quorate decisions are advisory and never applied | Rules and database outcome guard | Unit and integration refusals |
+| REQ-108 | Resolution text, for/against/abstaining votes and outcome | Immutable `resolution` row; totals equal attendance | Unit: invalid/tied/abstaining votes; database immutability |
+| REQ-109 | Constitutional majority before amendment takes effect | Recorded class-specific voting rules, pending proposal, exact voted payload, atomic application | Integration: confirmed policy, proposal permissions, stale vote and rollback; decisions 37–38 supersede the initial assumptions |
+| REQ-110 | Annual financial and membership report | `governance.annualReport`, `AnnualReport.js` | Integration: SA year boundaries, reversal netting, membership movement, reconciliation and tenancy |
+
+The defaulter pipeline (REQ-101–103) and notifications remain separately assigned.
+REQ-33 is enforced on new cycles using immutable version pins selected at
+commencement. Legacy cycles retain the previous due-date selection at migration;
+no historical money is rewritten (decision 38). Old assumed-majority votes are
+readable but cannot be newly applied. No shared database was migrated for testing.
+
+---
+
+## Date handling and ledger corrections follow-on
+
+| Requirement | Implementation | Evidence |
+|---|---|---|
+| REQ-31/33 | DATE strings; South African dates; catch-up uses the open cycle's pinned version | Decision 41; date-display tests and isolated integration |
+| REQ-90/91 | Original immutable; equal/opposite reversal with reference and reason; one reversal per original | Migration 018; ledger-reversals integration, including database guards |
+| REQ-92 | Treasurer posts; payout request → Chairperson approval → Treasurer posting | Actual HTTP role/tenant/approval tests; decision 42 records REQ-63 exception |
+
+A ledger correction does not cancel/replay the underlying business process or
+recalculate captured allocations. See decision 42 for the operational boundary.
+
+---
+
 ## Not yet implemented
 
 Scheduled for the sprints after the preliminary release. The full, task-by-task list with sizes and suggested order is in `docs/remaining-work.md`.
@@ -208,16 +240,18 @@ Scheduled for the sprints after the preliminary release. The full, task-by-task 
 **Reconciliation (Use Case 5)** — REQ-96 to REQ-98. The table exists and is seeded
 with a deliberate unexplained difference; the view is not built.
 
-**Assistant (Use Case 6)** — REQ-110 to REQ-118.
+**Assistant (Use Case 6)** — REQ-119 to REQ-128: implementation is now present
+on `racha`; owned by another member. Compliance was not reassessed in this
+governance change.
 
-**Governance (Use Case 7)** — REQ-104 to REQ-109. Meetings, quorum and resolutions.
 
-**Defaulter pipeline** — REQ-101 to REQ-103.
+
+**Defaulter pipeline** — REQ-101 to REQ-103; assigned to another group member.
 
 **Notifications** — REQ-61, REQ-62, and the REQ-6 lockout notice. Nothing is
 despatched yet; the lockout is recorded in the audit log instead.
 
-**Also outstanding:** REQ-3 (federated sign-in), REQ-11 (password re-entry for
+**Assigned to other group members (excluded from this update):** REQ-3 (federated sign-in), REQ-11 (password re-entry for
 sensitive operations), REQ-58 (batch capture),
 REQ-100 (export).
 
@@ -226,7 +260,10 @@ REQ-100 (export).
 ## Running the evidence
 
 ```bash
-npm test     # 243 automated tests, no database required
+npm test     # 258 automated tests, timezone-independent calendar rules
+npm run test:governance  # isolated PostgreSQL engine, no external database
+node server/integration/screens.js  # T3 workflows, isolated database + HTTP
+node server/integration/ledger-reversals.js  # ledger approvals, rollback and dates
 npm run check  # every relative import resolves
 ```
 
@@ -234,3 +271,46 @@ The automated tests exercise the rules engine, the permission matrix, monetary
 arithmetic and password storage. They need no database and no network, so they
 run even when the database is unreachable — which is the point of keeping the
 rules pure.
+
+
+## Membership and communications update — 30 September 2026
+
+This status supersedes earlier "not covered" statements for beneficiaries,
+announcements, exit processing and role dashboard financial detail.
+
+| Requirements | Evidence | Status |
+|---|---|---|
+| REQ-36 | beneficiaries module; `/beneficiaries`; integer-percent rules; completion tests | Implemented |
+| REQ-40,45,46,48,49 | exits module, migration 019; `/exits`; atomic settlement and safeguards | Implemented for fully represented calculation mappings; free-text conditions remain restricted |
+| REQ-47 | Migration 020, General resolution exact-debt snapshot, atomic write-off and exit; exit-writeoffs integration tests | Implemented: settle debts or use a carried exact-debt resolution |
+| REQ-129–131,133–135 | announcements module/page; immutable DB trigger; linked same-club correction | Implemented |
+| REQ-132 | Announcement table available as notification integration source | Assigned to notification owner; not dispatched here |
+| REQ-111 | Own contributions, penalties, outstanding and shared queue projection | Implemented |
+| REQ-112 | Officer month income, payouts/claims/costs, pool, arrears, read-only reconciliation | Implemented against existing ledger; penalty classification conflict in decision 43 |
+| REQ-113 | Chairperson pending payouts/exits/amendments | Partial: pipeline stage counts await teammate |
+| REQ-114 | Platform aggregate snapshot and expandable source totals | Implemented without club/member financial disclosure |
+| REQ-115 | Previous 12 completed months chart and records | Implemented for Treasurer/Chairperson |
+| REQ-116 | Non-zero reconciliation and >7-day overdue rotation indicators | Partial: near-expulsion pipeline alert awaits teammate |
+| REQ-117–118 | Club detail rows and platform aggregate detail rows, each from a read-only snapshot | Implemented; platform detail remains aggregate under REQ-19/20 |
+
+Repeatable evidence: `npm test`, `npm run test:completion`,
+`npm run test:governance`, `node server/integration/screens.js`,
+`node server/integration/ledger-reversals.js`, `npm run check`, `npm run build`.
+No shared database was migrated and no code was pushed to GitHub.
+
+
+### Exit write-off follow-on — 1 October 2026
+
+Migration 020 adds immutable contribution_writeoff allocations and a separate
+written_off_amount. General resolutions include the exact reviewed debts and use
+recorded constitutional voting rules. Only a carried unapplied resolution matching
+the pending notice and unchanged contribution snapshot can be consumed. Consumption,
+zero-cash ledger evidence, repayment, queue removal and membership exit are atomic.
+Expected and captured money remain unchanged. The UI labels historical rows
+"Written off" and balance queries subtract forgiven amounts. No defaulter stages,
+notification delivery or reconciliation capture were added.
+
+`npm run test:exit-writeoffs` proves advisory/rejected/stale/wrong-member refusal,
+rollback after allocation, immutable source history, duplicate prevention and no
+cash capture after an exit. `npm run test:completion` also checks platform aggregate
+sum-to-detail equality and access boundaries. See decision 44 for limits and handoff.

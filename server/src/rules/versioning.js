@@ -34,6 +34,8 @@ const AMENDABLE_FIELDS = [
     "penaltyAmount",
     "gracePeriodDays",
     "quorumPercentage",
+    "amendmentMajorityPercentage",
+    "governancePolicy",
     "exitNoticeDays",
     "payoutOrderMethod",
     "forfeitureRule",
@@ -107,6 +109,10 @@ function canonicalSchedule(schedule) {
 }
 
 function canonical(field, value) {
+    if (field === "governancePolicy") {
+        const ordered = v => Array.isArray(v) ? v.map(ordered) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,ordered(v[k])])) : v;
+        return JSON.stringify(ordered(value ?? null));
+    }
     if (MONEY_FIELDS.includes(field)) return canonicalMoney(value);
     if (field === "benefitSchedule") return canonicalSchedule(value);
     if (value === undefined || value === null || value === "") return "";
@@ -238,6 +244,13 @@ function validateNewVersion({ existing, clubType, changes, effectiveDate, amendm
         errors.amendmentNote = "Record why the constitution is being amended.";
     }
 
+    if (merged.amendmentMajorityPercentage !== undefined && (!Number.isInteger(Number(merged.amendmentMajorityPercentage)) || Number(merged.amendmentMajorityPercentage) < 51 || Number(merged.amendmentMajorityPercentage) > 100)) {
+        errors.amendmentMajorityPercentage = "Amendment majority must be a whole percentage from 51 to 100.";
+    }
+    if (merged.governancePolicy != null) {
+        try { require('./governance-policy').validatePolicy(merged.governancePolicy,clubType); }
+        catch (err) { errors.governancePolicy = err.message; }
+    }
     // REQ-29: the amended set must be coherent before it is activated.
     const consistency = validateConsistency({ clubType, ...merged });
     Object.assign(errors, consistency.errors);

@@ -63,6 +63,7 @@ async function resolveActor(token) {
            LEFT JOIN club   c ON c.club_id = s.active_club_id
            LEFT JOIN member m ON m.club_id = s.active_club_id
                              AND m.user_id = s.user_id
+                             AND m.standing NOT IN ('Exited', 'Expelled')
           WHERE s.token_hash = $1
             AND s.terminated_at IS NULL
             AND s.expires_at > now()`,

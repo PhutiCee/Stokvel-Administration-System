@@ -211,6 +211,7 @@ built, plus six beyond it.
 - Club ledger and member statements
 - Platform administration: provisioning, suspension, aggregate figures
 - Home page, sign-in, club selector, dashboard
+- Governance: meetings, quorum, resolutions, constitution amendments and resolution-based expulsion (Use Case 7)
 
 **Scheduled**
 
@@ -218,7 +219,6 @@ built, plus six beyond it.
 - Burial claims (Use Case 4)
 - Reconciliation (Use Case 5)
 - Assistant (Use Case 6)
-- Governance: meetings, quorum, resolutions (Use Case 7)
 - Notifications, defaulter pipeline, ledger export
 - REQ-3 federated sign-in. Deliberately not shown on the sign-in page until it
   works — a button that does nothing is worse than no button.
@@ -242,3 +242,63 @@ under Testability.
 `npm run check` walks every `require()` in `server/src` and reports any that do
 not resolve. A wrong relative path otherwise only surfaces when Node reaches
 that line, which can be long after startup.
+
+## Governance (Use Case 7)
+
+This implementation uses migrations **016_governance.sql** and
+**017_governance_completion.sql**. Keep 016 unchanged if it has already run; the
+follow-on update is 017. Install dependencies and apply outstanding migrations
+with the normal `npm install` / `npm run migrate`. Do not reseed or rebuild.
+
+On **Governance**, the Chairperson first records the club's already adopted voting
+rules with their source clause and effective date. No 100% or simple-majority
+threshold is assumed. Record the General/Expulsion rules, amendment classes,
+fractions, denominators and voting rights exactly as the constitution specifies.
+This one-time capture is not authority to change a constitution. Subsequent voting
+rule changes require a member resolution under the existing rules.
+
+The Chairperson submits a pending amendment proposal. A Secretary or Chairperson
+records the completed meeting and votes on that exact proposal. Advisory votes
+cannot take effect. A carried resolution is applied once by the Chairperson.
+Expulsion resolutions can name an eligible replacement officer, transferred in
+the same transaction so the club retains its required officers.
+
+The governance page also provides the read-only annual financial/membership report
+for officers. It labels year-to-date periods, unverified membership dates, missing
+or stale reconciliation and non-zero differences. It does not capture reconciliation
+or advance default stages; those tasks remain separately assigned.
+
+New contribution cycles pin the constitution selected by commencement (REQ-33).
+Pre-existing cycles preserve the earlier lookup without rewriting money. Membership
+history starts at migration 017: earlier eligibility cannot be guessed. Legacy
+meetings remain readable, but old unconfirmed votes cannot be newly applied.
+See decisions 37–39 in `Docs/Desicions.md` for these upgrade boundaries.
+
+`npm run test:governance` runs an isolated PostgreSQL upgrade/service/HTTP test,
+including legacy data preservation, proposals, threshold enforcement, atomic
+succession, pinned cycle versions and annual reports. It needs no Supabase
+credentials and does not reset shared data. `npm test` runs 254 unit tests.
+
+
+### Date fixes and ledger reversals (migration 018)
+
+After applying the previous governance and screen updates, apply outstanding
+migrations with `npm run migrate` (keep migrations 016/017 unchanged). Ledger now
+supports Treasurer corrections and payout reversal requests: Chairperson approves,
+then Treasurer posts. The original remains immutable. Penalty waivers continue
+through Contributions under REQ-63; see decision 42 for the REQ-92 exception.
+Ledger reversal does not rewind source allocations, queue turns or claim workflows.
+
+Dates remain YYYY-MM-DD for calendar values and timestamps display in South African
+time. The database connection requests the same timezone. Run:
+
+```bash
+npm test
+node server/integration/ledger-reversals.js
+node server/integration/screens.js
+npm run test:governance
+npm run check
+npm run build
+```
+
+Integration tests use an isolated engine, not the configured shared database.

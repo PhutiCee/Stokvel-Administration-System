@@ -1,10 +1,10 @@
 "use strict";
 
 const express = require("express");
-const { requireClubContext } = require("../middleware/tenancy");
-const { authorize } = require("../middleware/authorize");
-const { asyncRoute } = require("../middleware/errors");
-const { BadRequest } = require("../lib/errors");
+const { requireClubContext } = require("../../middleware/tenancy");
+const { authorize } = require("../../middleware/authorize");
+const { asyncRoute } = require("../../middleware/errors");
+const { BadRequest } = require("../../lib/errors");
 
 const router = express.Router();
 router.use(requireClubContext);
@@ -206,11 +206,11 @@ router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
             c.name AS club_name, c.club_type, c.town AS club_town,
             m.role, m.join_date, m.standing, m.queue_position, m.catch_up_amount,
                 COALESCE((
-                    SELECT sum(expected_amount - captured_amount)
+                    SELECT sum(expected_amount - captured_amount - written_off_amount)
                       FROM contribution
                      WHERE club_id = m.club_id
                        AND member_id = m.member_id
-                       AND captured_amount < expected_amount
+                       AND captured_amount < expected_amount - written_off_amount
                 ), 0) AS outstanding
            FROM member m
            JOIN user_account u ON u.user_id = m.user_id

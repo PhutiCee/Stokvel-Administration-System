@@ -61,7 +61,7 @@ async function periodMemberTotals(db, { periodStart, periodEnd }) {
              SELECT p.member_id, COALESCE(sum(p.amount), 0) AS penalties
                FROM penalty p
               WHERE p.club_id = $1 AND p.waived_at IS NULL
-                AND p.levied_at::date > $2::date AND p.levied_at::date <= $3::date
+                AND (p.levied_at AT TIME ZONE 'Africa/Johannesburg')::date > $2::date AND (p.levied_at AT TIME ZONE 'Africa/Johannesburg')::date <= $3::date
               GROUP BY p.member_id
          )
          SELECT m.member_id, u.full_name, m.standing,
@@ -83,7 +83,7 @@ async function periodFinancialTotals(db, { periodStart, periodEnd }) {
         `SELECT COALESCE(sum(amount)  FILTER (WHERE entry_type = 'Interest'), 0) AS interest,
                 COALESCE(sum(-amount) FILTER (WHERE entry_type = 'Expense'),  0) AS expenses
            FROM ledger_entry
-          WHERE club_id = $1 AND posted_at::date > $2::date AND posted_at::date <= $3::date`,
+          WHERE club_id = $1 AND (posted_at AT TIME ZONE 'Africa/Johannesburg')::date > $2::date AND (posted_at AT TIME ZONE 'Africa/Johannesburg')::date <= $3::date`,
         [db.clubId, periodStart, periodEnd]
     );
 }

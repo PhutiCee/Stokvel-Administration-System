@@ -9,12 +9,9 @@
  *
  * No Express in this file.
  *
- * createNewVersion() has no HTTP route yet, on purpose. REQ-32 says an
- * amendment takes effect only once a member resolution has met the quorum and
- * majority thresholds. Until the governance module (Use Case 7) exists to
- * record that resolution, a route here would let an officer amend the
- * constitution without one. Governance calls this function when a resolution
- * is given effect.
+ * createNewVersion() is called by governance only after a carried resolution.
+ * Governance passes its transaction so inserting the constitution and marking
+ * the resolution as applied either both commit or both roll back.
  */
 
 const repo = require("./constitution.repo");
@@ -76,10 +73,10 @@ async function getVersionInForceOn(db, date = null) {
  * @param {string} args.effectiveDate  YYYY-MM-DD, today or later
  * @param {string} args.amendmentNote  why
  */
-async function createNewVersion(db, { changes, effectiveDate, amendmentNote }, { actor, audit }) {
+async function createNewVersion(db, { changes, effectiveDate, amendmentNote, inheritedGovernancePolicy = null }, { actor, audit, transaction = null }) {
     const today = todayIso();
 
-    const outcome = await withClubTransaction(db.clubId, async (tx) => {
+    const run = async (tx) => {
         // Serialise amendments to this club. Without the lock, two concurrent
         // amendments would both compute the same next version number and one
         // would fail on the database's unique constraint with an error nobody
@@ -110,6 +107,8 @@ async function createNewVersion(db, { changes, effectiveDate, amendmentNote }, {
             penaltyAmount: toNumeric(toCents(m.penaltyAmount || 0)),
             gracePeriodDays: Number(m.gracePeriodDays ?? 0),
             quorumPercentage: Number(m.quorumPercentage),
+            amendmentMajorityPercentage: Number(m.amendmentMajorityPercentage ?? 100),
+            governancePolicy: m.governancePolicy ?? inheritedGovernancePolicy,
             exitNoticeDays: Number(m.exitNoticeDays ?? 0),
             payoutOrderMethod: m.payoutOrderMethod,
             forfeitureRule: m.forfeitureRule?.trim?.() || null,
@@ -122,7 +121,8 @@ async function createNewVersion(db, { changes, effectiveDate, amendmentNote }, {
         });
 
         return { check, created };
-    });
+    };
+    const outcome = transaction ? await run(transaction) : await withClubTransaction(db.clubId, run);
 
     if (!outcome.check.valid) {
         await audit("constitution.amend", "Refused", {

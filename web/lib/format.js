@@ -12,7 +12,20 @@
  * account.
  */
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 const THIN_SPACE = "\u2009";
 const MINUS = "\u2212"; // a true minus sign, which aligns with the digits
@@ -41,41 +54,71 @@ export function isZeroAmount(amount) {
 }
 
 export function isNegativeAmount(amount) {
-  return String(amount ?? "").trim().startsWith("-") && !isZeroAmount(amount);
+  return (
+    String(amount ?? "")
+      .trim()
+      .startsWith("-") && !isZeroAmount(amount)
+  );
 }
 
-const toDate = (v) => (v instanceof Date ? v : new Date(v));
-
-/** 15 Sep 2026 */
+/** Calendar dates stay calendar dates; instants display in South African time. */
+export function todayIso(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Johannesburg",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+function dayParts(value) {
+  const iso =
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? value
+      : todayIso(new Date(value));
+  return iso.split("-").map(Number);
+}
 export function fmtDate(v) {
   if (!v) return "—";
-  const d = toDate(v);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  try {
+    const [y, m, d] = dayParts(v);
+    return `${d} ${MONTHS[m - 1]} ${y}`;
+  } catch {
+    return "—";
+  }
 }
-
-/** 15 Sep */
 export function fmtDateShort(v) {
   if (!v) return "—";
-  const d = toDate(v);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  try {
+    const [, m, d] = dayParts(v);
+    return `${d} ${MONTHS[m - 1]}`;
+  } catch {
+    return "—";
+  }
 }
-
-/** 15 Sep 2026, 14:30 */
 export function fmtDateTime(v) {
   if (!v) return "—";
-  const d = toDate(v);
-  return `${fmtDate(d)}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  try {
+    return `${fmtDate(v)}, ${new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(v))}`;
+  } catch {
+    return "—";
+  }
 }
-
 export function relative(v) {
   if (!v) return "—";
-  const d = toDate(v);
-  const days = Math.round((Date.now() - d.getTime()) / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 0) return `In ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`;
-  if (days < 30) return `${days} days ago`;
-  return fmtDate(d);
+  try {
+    const [y, m, d] = dayParts(v);
+    const days = Math.round(
+      (Date.parse(todayIso() + "T00:00:00Z") - Date.UTC(y, m - 1, d)) /
+        86400000,
+    );
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    if (days < 0) return `In ${-days} day${days === -1 ? "" : "s"}`;
+    if (days < 30) return `${days} days ago`;
+    return fmtDate(v);
+  } catch {
+    return "—";
+  }
 }
 
 /**
