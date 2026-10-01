@@ -28,11 +28,12 @@ section 4.5 are unchanged. Integration commands: `npm run test:completion` and `
 | UC7 Governance | **Built:** meetings, quorum, resolutions, amendments and resolution-based expulsion; see decision 36 |
 
 Also built this sprint: constitution versioning (REQ-30 to REQ-33), penalty waiver
-(REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34).
+(REQ-63), proof-of-payment upload (REQ-53), officer-count caps (decision 34), and the
+standing engine (REQ-44, 101 to 103; migration 021, see T7).
 Tests: 261 automated tests pass with timezone-independent calendar rules,
 plus `npm run test:governance`
 for isolated database/HTTP checks. Imports resolve
-(`npm run check`). Next free migration number: **021** (016–017 governance; 018 ledger reversals; 019 membership and announcements; 020 exit write-offs).
+(`npm run check`). Next free migration number: **022** (016–017 governance; 018 ledger reversals; 019 membership and announcements; 020 exit write-offs; 021 standing engine).
 
 ## 2. How to work on any task
 
@@ -133,15 +134,21 @@ requirements. Do not treat a ledger reversal as cancellation of the original pro
 
 ### 4.2 Member lifecycle
 
-**T7. Standing engine and defaulter pipeline - REQ-44, 101, 102, 103.** (L)
-The automatic standing pipeline is still outstanding. Governance now changes standing
-on an approved expulsion, but automated warning/suspension/reinstatement remains
-assigned to another member. Payout eligibility, arrears rulings, claim eligibility and
-distributions all depend on it, so in real use they would run on stale data.
-Build: a pipeline Warning, Suspension, Expulsion advancing on thresholds in the
-constitution (there are no threshold columns yet, so add them and validate them in
-`rules/constitution.js`), automatic return to Good standing when arrears and penalties
-are cleared, with the date recorded. Expulsion must wait for a resolution (T5).
+**T7. Standing engine and defaulter pipeline - REQ-44, 101, 102, 103: implemented, migration 021.**
+Thresholds (warning, suspension and expulsion, counted in missed contributions) are
+nullable columns on `constitution`, set by recording an amendment and validated in
+`rules/constitution.js`. A club with no thresholds set is left alone. The pipeline
+moves a member Good standing, then In arrears (the warning stage, using the existing
+`member_standing` label), then Suspended, one step per run so every stage is recorded,
+and back to Good standing when arrears and penalties are cleared, with the date
+recorded. Every change is written to the append-only `standing_change` table.
+Expulsion is never automatic: the engine reports the member as awaiting a resolution,
+and the expulsion itself is applied through governance (T5). Officers use
+`POST /api/standing/run` (with a dry-run option) and `GET /api/standing/changes`.
+Pure rules and their tests are in `rules/standing.js` and `tests/standing.test.js`.
+Still to do: run migration 021 and the endpoints against a database (not yet done), and
+add defaulter-stage counts to the dashboards (T12). Apply migration 021 before
+deploying, because the constitution queries select the new threshold columns.
 
 **T8. Exit processing — implemented for supported mapped rules; partial overall.**
 Migration 019 and `/exits` record an immutable constitution calculation mapping,
@@ -195,8 +202,8 @@ The platform dashboard now opens aggregate source totals for member standings an
 ledger categories (REQ-114,117,118). These use the same read-only snapshot as the cards;
 no club/member financial records are exposed. Ended memberships are excluded.
 
-Still needed: defaulter-stage counts and near-expulsion exceptions from the assigned
-pipeline; full portfolio acceptance and browser/device walkthrough. Reconciliation is read-only here; capture/UI remains teammate-owned. REQ-112's
+Still needed: defaulter-stage counts and near-expulsion exceptions from the standing
+pipeline (T7, now available); full portfolio acceptance and browser/device walkthrough. Reconciliation is read-only here; capture/UI remains teammate-owned. REQ-112's
 wording lists penalties as expenditure, while the existing ledger records them as
 positive assessments: this conflict is flagged in decision 43, not silently changed.
 
@@ -216,7 +223,7 @@ provider credentials, lowest priority.)
 
 Also assigned to other members and excluded from this governance update:
 REQ-3 (federated sign-in), REQ-11 (password re-entry), REQ-58 (batch capture),
-REQ-100 (export), REQ-101–103 (defaulter pipeline), notifications and
+REQ-100 (export), notifications and
 Reconciliation (Use Case 5). The annual governance report only reads existing
 reconciliation records; it does not implement reconciliation capture.
 
@@ -270,7 +277,8 @@ members; Secretaries 1 plus 1 per 150). Add it to the SRS if it should be assess
 1. Remaining documentation numbering cleanup (T2 date/cycle fixes and T3 screens are done).
 2. T4 Reconciliation remains. T5 Governance is implemented; apply migrations 016 and 017
    and run the governance demo checks.
-3. T7 Standing engine, then T8 Exit processing.
+3. T7 Standing engine is implemented (apply migration 021 and run its database checks
+   first), then T8 Exit processing.
 4. T12 role dashboards remain; T6 ledger reversals are implemented. T13 is assigned.
 5. T10, T11, T14, T15 last; leave what does not fit in `traceability.md` under
    "Not yet implemented" so the marker sees it was a decision, not an oversight.
