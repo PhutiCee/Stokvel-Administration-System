@@ -91,6 +91,7 @@ const TENANT_SCOPED_TABLES = [
   "governance_initial_policy",
   "governance_member_history",
   "governance_proposal",
+  "standing_change",
 ];
 
 const TABLE_PATTERN = new RegExp(

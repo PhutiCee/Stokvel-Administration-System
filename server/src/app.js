@@ -44,7 +44,11 @@ const memberRoutes = require("./modules/members/members.routes");
 const contributionRoutes = require("./modules/contributions/contributions.routes");
 const ledgerRoutes = require("./modules/ledger/ledger.routes");
 const platformRoutes = require("./modules/platform/platform.routes");
+
+
+const standingRoutes = require("./modules/standing/standing.routes");
 const assistantRoutes = require("./modules/assistant/assistant.routes");
+
 
 function createApp() {
   const app = express();
@@ -98,6 +102,7 @@ function createApp() {
   app.use("/api/ledger", ledgerRoutes);
   app.use("/api/platform", platformRoutes);
   app.use("/api/assistant", assistantRoutes);
+  app.use("/api/standing", standingRoutes);
   app.use("/api/governance", require("./modules/governance/governance.routes"));
 
   for (const name of ["beneficiaries", "announcements", "exits", "dashboard"]) {

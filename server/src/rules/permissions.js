@@ -149,6 +149,13 @@ MATRIX.Treasurer.push("exit.assess");
 MATRIX.Chairperson.push("exit.configure", "announcement.publish");
 MATRIX.Secretary.push("announcement.publish");
 
+
+// REQ-44, REQ-101 to REQ-103. Officers run the standing check and read its
+// history. An ordinary Member does not see other members' standing changes.
+for (const role of ["Treasurer", "Secretary", "Chairperson"]) {
+  MATRIX[role].push("view.standing", "manage.standing");
+}
+
 const ALL_ACTIONS = [...new Set(Object.values(MATRIX).flat())].sort();
 
 /**

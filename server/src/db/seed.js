@@ -139,8 +139,12 @@ const CLUBS = [
             waiting: 0, schedule: [],
             // REQ-79. A grocery stokvel typically distributes ahead of the
             // December holidays.
-            yearEndMonth: 11, yearEndDay: 30
-        },
+                    yearEndMonth: 11, yearEndDay: 30,
+            // REQ-44, REQ-101 to REQ-103. Standing thresholds, in missed
+            // contributions. Only this club has them, so the standing check can
+            // be shown here without touching Lerato's arrears in Mmakau.
+            warningAfterMissed: 1, suspensionAfterMissed: 3, expulsionAfterMissed: 6
+ },
         officers: { grace: "Chairperson", portia: "Treasurer", sarah: "Secretary" },
         members: ["grace", "portia", "sarah", "elias", "johanna", "petunia", "nomsa"],
         queue: false
@@ -222,19 +226,22 @@ async function seed() {
 
             // --- constitution ----------------------------------------------
             const c = def.constitution;
-            await client.query(
+                        await client.query(
                 `INSERT INTO constitution
                      (club_id, version, effective_date, contribution_amount,
                       cycle_frequency, cycle_start_date, penalty_amount,
                       grace_period_days, quorum_percentage, exit_notice_days,
                       payout_order_method, forfeiture_rule,
                       waiting_period_days, benefit_schedule,
-                      year_end_month, year_end_day)
-                 VALUES ($1, 1, $2, $3, 'Monthly', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                      year_end_month, year_end_day,
+                      warning_after_missed, suspension_after_missed, expulsion_after_missed)
+                 VALUES ($1, 1, $2, $3, 'Monthly', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
                 [clubId, iso(registered), toNumeric(toCents(c.contribution)),
                  iso(registered), toNumeric(toCents(c.penalty)), c.grace, c.quorum,
                  c.exitNotice, c.order, c.forfeiture, c.waiting,
-                 JSON.stringify(c.schedule), c.yearEndMonth || null, c.yearEndDay || null]
+                 JSON.stringify(c.schedule), c.yearEndMonth || null, c.yearEndDay || null,
+                 c.warningAfterMissed ?? null, c.suspensionAfterMissed ?? null,
+                 c.expulsionAfterMissed ?? null]
             );
 
             // --- members ---------------------------------------------------
