@@ -33,6 +33,7 @@ export default function ClaimsPage() {
   const [busy, setBusy] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [lodging, setLodging] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
   const [cancelling, setCancelling] = useState(null);
 
   const isOfficer = can("claim.view");
@@ -149,8 +150,8 @@ export default function ClaimsPage() {
               can={can}
               busy={busy}
               isOldestLodged={oldestLodged?.claimId === c.claimId}
-              onInitiate={() => act(() => api.initiate(c.claimId))}
-              onApprove={() => act(() => api.approve(c.claimId))}
+              onInitiate={() => setConfirmation({ title: "Initiate claim payment", description: "Submit this claim for payment approval by a different officer?", run: () => api.initiate(c.claimId) })}
+              onApprove={() => setConfirmation({ title: "Approve claim payment", description: "Pay the assessed benefit for this claim and record it in the ledger?", run: () => api.approve(c.claimId) })}
               onCancel={() => setCancelling(c)}
             />
           ))}
@@ -173,6 +174,9 @@ export default function ClaimsPage() {
         />
       )}
 
+      {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description}
+        requireReason={false} confirmVariant="primary" onClose={() => setConfirmation(null)}
+        onConfirm={async () => { await confirmation.run(); await load(); }} />}
       {cancelling && (
         <ConfirmDialog
           title="Cancel this claim"

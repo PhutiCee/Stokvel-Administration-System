@@ -1,0 +1,311 @@
+{
+  "022_notifications.sql": {
+    "columns": [
+      {
+        "table_name": "notification",
+        "column_name": "club_id",
+        "type": "uuid",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "notification",
+        "column_name": "created_at",
+        "type": "timestamp with time zone",
+        "required": true,
+        "default_value": "now()"
+      },
+      {
+        "table_name": "notification",
+        "column_name": "message",
+        "type": "text",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "notification",
+        "column_name": "notification_id",
+        "type": "uuid",
+        "required": true,
+        "default_value": "gen_random_uuid()"
+      },
+      {
+        "table_name": "notification",
+        "column_name": "sent_by",
+        "type": "uuid",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "notification",
+        "column_name": "title",
+        "type": "character varying(120)",
+        "required": true,
+        "default_value": ""
+      }
+    ],
+    "constraints": [
+      {
+        "table_name": "notification",
+        "definition": "FOREIGN KEY (club_id) REFERENCES club(club_id) ON DELETE CASCADE",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "FOREIGN KEY (sent_by) REFERENCES user_account(user_id)",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL club_id",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL created_at",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL message",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL notification_id",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL sent_by",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "NOT NULL title",
+        "validated": true
+      },
+      {
+        "table_name": "notification",
+        "definition": "PRIMARY KEY (notification_id)",
+        "validated": true
+      }
+    ],
+    "indexes": [
+      {
+        "table_name": "notification",
+        "definition": "USING btree (club_id, created_at DESC)"
+      },
+      {
+        "table_name": "notification",
+        "definition": "USING btree (notification_id)"
+      }
+    ],
+    "triggers": []
+  },
+  "023_standing_engine.sql": {
+    "columns": [
+      {
+        "table_name": "constitution",
+        "column_name": "expulsion_after_missed",
+        "type": "integer",
+        "required": false,
+        "default_value": ""
+      },
+      {
+        "table_name": "constitution",
+        "column_name": "suspension_after_missed",
+        "type": "integer",
+        "required": false,
+        "default_value": ""
+      },
+      {
+        "table_name": "constitution",
+        "column_name": "warning_after_missed",
+        "type": "integer",
+        "required": false,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "change_id",
+        "type": "uuid",
+        "required": true,
+        "default_value": "gen_random_uuid()"
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "changed_by",
+        "type": "uuid",
+        "required": false,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "changed_on",
+        "type": "date",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "club_id",
+        "type": "uuid",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "created_at",
+        "type": "timestamp with time zone",
+        "required": true,
+        "default_value": "now()"
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "from_standing",
+        "type": "member_standing",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "member_id",
+        "type": "uuid",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "reason",
+        "type": "text",
+        "required": true,
+        "default_value": ""
+      },
+      {
+        "table_name": "standing_change",
+        "column_name": "to_standing",
+        "type": "member_standing",
+        "required": true,
+        "default_value": ""
+      }
+    ],
+    "constraints": [
+      {
+        "table_name": "constitution",
+        "definition": "CHECK ((((warning_after_missed IS NULL) AND (suspension_after_missed IS NULL) AND (expulsion_after_missed IS NULL)) OR ((warning_after_missed IS NOT NULL) AND (suspension_after_missed IS NOT NULL) AND (expulsion_after_missed IS NOT NULL) AND (warning_after_missed < suspension_after_missed) AND (suspension_after_missed < expulsion_after_missed))))",
+        "validated": true
+      },
+      {
+        "table_name": "constitution",
+        "definition": "CHECK (((expulsion_after_missed IS NULL) OR (expulsion_after_missed >= 1)))",
+        "validated": true
+      },
+      {
+        "table_name": "constitution",
+        "definition": "CHECK (((suspension_after_missed IS NULL) OR (suspension_after_missed >= 1)))",
+        "validated": true
+      },
+      {
+        "table_name": "constitution",
+        "definition": "CHECK (((warning_after_missed IS NULL) OR (warning_after_missed >= 1)))",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "CHECK ((from_standing <> to_standing))",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "FOREIGN KEY (changed_by) REFERENCES user_account(user_id)",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "FOREIGN KEY (club_id) REFERENCES club(club_id) ON DELETE RESTRICT",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "FOREIGN KEY (member_id) REFERENCES member(member_id) ON DELETE RESTRICT",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL change_id",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL changed_on",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL club_id",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL created_at",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL from_standing",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL member_id",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL reason",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "NOT NULL to_standing",
+        "validated": true
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "PRIMARY KEY (change_id)",
+        "validated": true
+      }
+    ],
+    "indexes": [
+      {
+        "table_name": "standing_change",
+        "definition": "USING btree (change_id)"
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "USING btree (club_id)"
+      },
+      {
+        "table_name": "standing_change",
+        "definition": "USING btree (member_id, created_at)"
+      }
+    ],
+    "triggers": [
+      {
+        "table_name": "standing_change",
+        "name": "standing_change_no_delete",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER standing_change_no_delete BEFORE DELETE ON standing_change FOR EACH ROW EXECUTE FUNCTION standing_change_is_immutable()",
+        "body": "BEGIN RAISE EXCEPTION 'standing_change is append-only: % is not permitted.', TG_OP USING ERRCODE = 'restrict_violation'; END;"
+      },
+      {
+        "table_name": "standing_change",
+        "name": "standing_change_no_update",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER standing_change_no_update BEFORE UPDATE ON standing_change FOR EACH ROW EXECUTE FUNCTION standing_change_is_immutable()",
+        "body": "BEGIN RAISE EXCEPTION 'standing_change is append-only: % is not permitted.', TG_OP USING ERRCODE = 'restrict_violation'; END;"
+      }
+    ]
+  }
+}

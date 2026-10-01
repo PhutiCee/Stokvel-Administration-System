@@ -314,3 +314,17 @@ notification delivery or reconciliation capture were added.
 rollback after allocation, immutable source history, duplicate prevention and no
 cash capture after an exit. `npm run test:completion` also checks platform aggregate
 sum-to-detail equality and access boundaries. See decision 44 for limits and handoff.
+
+
+### Integrated follow-through — 1 October 2026 (supersedes older gap notes)
+
+| Area | Current implementation and evidence |
+|---|---|
+| REQ-89–95 corrections | Atomic receipt allocation/credit compensation, rotation queue restoration and claim reopening; `test:source-compensation`. Legacy evidence and compound-workflow limits in decision 45. |
+| REQ-45–48 exits | Explicit day/paid-cycle conditions, notice snapshot or settlement reevaluation; `exit-conditions.test.js`, existing completion/write-off suites. Other predicates remain unsupported. |
+| UC5 / REQ-96–98 | Merged reconciliation page/API; dated ledger snapshot, gap explanation, permissions/tenant checks in `test:browser`. Full exception-resolution workflow remains owner work. |
+| REQ-44,101–103 | Merged standing engine and rules tests; scheduling and adopted threshold configuration remain incomplete. |
+| REQ-136–141 | Merged Secretary broadcast feed. External delivery, retries, preferences and event dispatch remain incomplete. |
+| Confirmations/navigation | Real browser capture/reversal/recapture and rotation initiation/approval/reversal flow, mobile menu and member role checks in `test:browser`. Not exhaustive device acceptance. |
+
+See `docs/integration-handoff.md` for reproducible commands and exact merged heads.

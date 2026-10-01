@@ -14,6 +14,7 @@
 
 const repo = require("./contributions.repo");
 const ledger = require("../ledger/ledger.service");
+const compensation = require("../ledger/compensation.repo");
 const { withClubTransaction } = require("../../db/tx");
 const { toCents, toNumeric, format } = require("../../lib/money");
 const {
@@ -109,13 +110,14 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
       const appliedCredit = Math.min(creditCents, grossCents);
       const expectedCents = grossCents - appliedCredit;
 
-      await repo.insertExpected(tx, {
+      const expected = await repo.insertExpected(tx, {
         cycleId: cycle.cycle_id,
         memberId: m.member_id,
         expectedAmount: toNumeric(expectedCents),
       });
 
       if (appliedCredit > 0) {
+        await compensation.applyCredits(tx, m.member_id, expected.contribution_id, creditCents, appliedCredit);
         await repo.addCredit(
           tx,
           m.member_id,
@@ -316,7 +318,7 @@ async function captureContribution(
     );
 
   // REQ-59.
-  if (existing.cycle_status === "Closed") {
+  if (existing.cycle_status === "Closed" && !input.correctsEntryId) {
     throw new RuleRefusal(
       `Cycle ${existing.sequence_number} is closed. A correction to a closed cycle needs a ` +
         `reversing entry followed by a fresh capture, so that the original record survives.`,
@@ -356,11 +358,13 @@ async function captureContribution(
 
   const result = await withClubTransaction(db.clubId, async (tx, client) => {
     await repo.lockClub(tx);
+    const isCorrection = await compensation.correction(tx, contributionId, input.correctsEntryId);
     const live = await repo.getContribution(tx, contributionId);
     if (
       toCents(live.written_off_amount || "0") > 0 ||
       ["Exited", "Expelled"].includes(live.standing) ||
-      live.cycle_status === "Closed" ||
+      (live.cycle_status === "Closed" && !isCorrection) ||
+      live.expected_amount !== existing.expected_amount ||
       live.captured_amount !== existing.captured_amount
     )
       throw new RuleRefusal(
@@ -406,6 +410,10 @@ async function captureContribution(
         excludeContributionId: contributionId,
       });
     }
+
+    await compensation.recordReceipt(tx, entry.entryId, contributionId, {...input, receiptDate}, [
+      {type: "contribution", id: contributionId, amount: toNumeric(appliedCents)}, ...excess.allocations,
+    ]);
 
     // REQ-56, posted once only. The unique index from migration 009 makes a
     // repeat impossible even when two captures race.
@@ -507,7 +515,8 @@ async function getCycleDetail(db, cycleId) {
       gracePeriodDays: graceDays,
       penaltyAmount: constitution?.penalty_amount || "0.00",
     },
-    contributions: rows.map((r) => ({
+    contributions: await Promise.all(rows.map(async (r) => ({
+      correctionCandidates: await compensation.correctionCandidates(db, r.contribution_id),
       contributionId: r.contribution_id,
       memberId: r.member_id,
       fullName: r.full_name,
@@ -531,7 +540,7 @@ async function getCycleDetail(db, cycleId) {
       receiptDate: r.receipt_date,
       method: r.method,
       reference: r.reference,
-    })),
+    }))),
   };
 }
 

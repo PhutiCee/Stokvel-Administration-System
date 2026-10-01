@@ -46,8 +46,8 @@ const pending = (db, id) =>
   );
 const create = (db, x) =>
   db.one(
-    `INSERT INTO exit_notice(club_id,member_id,notice_date,earliest_exit,mapping_id,requested_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING notice_id`,
-    [db.clubId, x.memberId, x.today, x.earliest, x.mappingId, x.userId],
+    `INSERT INTO exit_notice(club_id,member_id,notice_date,earliest_exit,mapping_id,requested_by,condition_facts) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING notice_id`,
+    [db.clubId, x.memberId, x.today, x.earliest, x.mappingId, x.userId, JSON.stringify(x.conditionFacts || null)],
   );
 const assess = (db, id, calculation, user) =>
   db.one(
@@ -157,3 +157,13 @@ module.exports.settlePenalty = (db, id, amount) =>
     "UPDATE penalty SET settled_amount=$3 WHERE club_id=$1 AND penalty_id=$2",
     [db.clubId, id, amount],
   );
+
+module.exports.conditionFacts = async (db, memberId, evaluatedOn) => {
+  const r=await db.one(`SELECT greatest($3::date-m.join_date,0)::int AS "membershipDays",
+    (SELECT count(*)::int FROM contribution c JOIN cycle cy ON cy.club_id=c.club_id AND cy.cycle_id=c.cycle_id
+     WHERE c.club_id=m.club_id AND c.member_id=m.member_id AND cy.start_date>=m.join_date AND cy.status='Closed'
+     AND cy.due_date<=$3::date AND (cy.closed_at AT TIME ZONE 'Africa/Johannesburg')::date<=$3::date
+     AND c.written_off_amount=0 AND c.captured_amount>=c.expected_amount) AS "completedPaidCycles"
+     FROM member m WHERE m.club_id=$1 AND m.member_id=$2`,[db.clubId,memberId,evaluatedOn]);
+  return {...r,evaluatedOn};
+};

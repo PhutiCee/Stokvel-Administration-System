@@ -36,7 +36,9 @@ import { useSession } from "@/lib/session";
 import { cycles as cyclesApi, contributions as api, ApiError } from "@/lib/api";
 import { money, isZeroAmount, fmtDate, initials, cx } from "@/lib/format";
 
-const METHODS = ["Cash", "Electronic funds transfer", "Other"];
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+
+const METHODS = ["Cash", "Electronic funds transfer", "Debit order"];
 
 const STATUS_TONE = {
   Paid: "positive",
@@ -316,7 +318,7 @@ export default function ContributionsPage() {
                         Proof
                       </Button>
                       {can("contribution.capture") &&
-                        cycle.status === "Open" &&
+                        (cycle.status === "Open" || c.correctionCandidates?.length > 0) &&
                         c.status !== "Written off" &&
                         !["Exited", "Expelled"].includes(c.standing) && (
                           <Button
@@ -375,10 +377,12 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
     ) / 100,
   );
 
+  const [confirming, setConfirming] = useState(false);
   const [amount, setAmount] = useState(
     shortfall > 0 ? String(shortfall.toFixed(2)) : "",
   );
   const [method, setMethod] = useState("Cash");
+  const [correctsEntryId, setCorrectsEntryId] = useState(contribution.correctionCandidates?.[0]?.entryId || "");
   const [reference, setReference] = useState("");
   const [receiptDate, setReceiptDate] = useState(todayIso());
   const [fields, setFields] = useState({});
@@ -393,6 +397,7 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
     setFields({});
     try {
       const result = await api.capture(contribution.contributionId, {
+        correctsEntryId: correctsEntryId || undefined,
         amount,
         method,
         reference: reference || null,
@@ -404,6 +409,7 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
         setFields(err.detail.fields);
       else setError(err.message);
       setBusy(false);
+      throw err;
     }
   }
 
@@ -428,6 +434,12 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
       </div>
 
       <div className="space-y-4">
+        {contribution.correctionCandidates?.length > 0 && <Field label="Correcting reversed receipt" htmlFor="corrects-receipt">
+          <select id="corrects-receipt" className="w-full border rounded p-2" value={correctsEntryId} onChange={e=>setCorrectsEntryId(e.target.value)}>
+            {contribution.correctionCandidates.map(r=><option key={r.entryId} value={r.entryId}>{money(r.amount)} · {r.entryId}</option>)}
+          </select>
+          <p className="text-sm text-ink-500">The original, its reversal and this correction stay in the ledger. Each reversed receipt permits one correction.</p>
+        </Field>}
         <Field
           label="Amount received"
           htmlFor="amount"
@@ -510,7 +522,7 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
         )}
 
         <div className="flex gap-2 pt-1">
-          <Button onClick={submit} loading={busy} className="flex-1">
+          <Button onClick={() => setConfirming(true)} loading={busy} className="flex-1">
             Capture {amount ? money(amount) : ""}
           </Button>
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
@@ -518,6 +530,10 @@ function CapturePanel({ contribution, onCancel, onCaptured }) {
           </Button>
         </div>
       </div>
+      {confirming && <ConfirmDialog title="Confirm contribution receipt"
+        description={`Record ${money(amount || 0)} from ${contribution.fullName} by ${method} on ${receiptDate}? Any excess follows the allocation order shown above.`}
+        requireReason={false} confirmLabel="Record receipt" confirmVariant="primary"
+        onClose={() => setConfirming(false)} onConfirm={submit} />}
     </Card>
   );
 }

@@ -149,6 +149,9 @@ MATRIX.Treasurer.push("exit.assess");
 MATRIX.Chairperson.push("exit.configure", "announcement.publish");
 MATRIX.Secretary.push("announcement.publish");
 
+for (const role of ['Member','Treasurer','Secretary','Chairperson']) MATRIX[role].push('notification.view');
+MATRIX.Secretary.push('notification.send');
+
 const ALL_ACTIONS = [...new Set(Object.values(MATRIX).flat())].sort();
 
 /**

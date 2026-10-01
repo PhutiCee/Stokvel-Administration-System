@@ -8,13 +8,13 @@
     "web"
   ],
   "engines": {
-    "node": ">=18.17"
+    "node": ">=18.18"
   },
   "scripts": {
     "dev": "node -e \"const { spawn } = require('child_process'); const commands = process.platform === 'win32' ? [['npm.cmd', ['run', 'dev:api']], ['npm.cmd', ['run', 'dev:web']]] : [['npm', ['run', 'dev:api']], ['npm', ['run', 'dev:web']]]; const children = commands.map(([command, args]) => spawn(command, args, { stdio: 'inherit' })); const stop = () => children.forEach((child) => child.kill()); process.on('SIGINT', stop); process.on('SIGTERM', stop);\"",
     "dev:api": "node server/src/index.js",
-    "dev:web": "cd web && npx next dev",
-    "build": "cd web && npx next build",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
     "migrate": "node server/src/db/migrate.js up",
     "migrate:status": "node server/src/db/migrate.js status",
     "migrate:reset": "node server/src/db/migrate.js reset",
@@ -24,9 +24,15 @@
     "check": "node server/check-imports.js",
     "test:governance": "node server/integration/governance.js",
     "test:completion": "node server/integration/completion.js",
-    "test:exit-writeoffs": "node server/integration/exit-writeoffs.js"
+    "test:exit-writeoffs": "node server/integration/exit-writeoffs.js",
+    "test:source-compensation": "node server/integration/source-compensation.js",
+    "test:integration": "node server/integration/run.js",
+    "test:browser": "node server/integration/browser-flows.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
+  },
+  "overrides": {
+    "postcss": "8.5.28"
   }
 }

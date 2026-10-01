@@ -1,21 +1,8 @@
 "use client";
 
-/**
- * The chrome around every in-club screen.
- *
- * The club name sits in the header, permanently, in the navy bar. That is
- * deliberate: a treasurer who belongs to three clubs is one careless click away
- * from capturing a payment against the wrong one, and the only defence the
- * interface can offer is to never let them forget which club they are in.
- *
- * Navigation is filtered by permission, which decides only what to RENDER.
- * Every request is authorised again on the server against the role held in the
- * active club (REQ-8).
- */
-
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -30,22 +17,17 @@ import {
   ListOrdered,
   PiggyBank,
   HeartHandshake,
-  MessageCircle,
+  MessageCircle, Bell, Scale,
 } from "lucide-react";
 import { Mark } from "@/components/Wordmark";
 import { Badge } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
-import { cx, initials } from "@/lib/format";
+import { cx } from "@/lib/format";
 
-// Ordered by how often each is opened, not by importance. "My statement" sits
-// among them rather than tucked under an account menu, because for an ordinary
-// member it is the only page they came for.
-//
-// clubType is checked alongside permission: a page built for one kind of club
-// (the payout queue, a year-end distribution, a burial claim) has nothing to
-// show a member of a different kind, so it does not appear for them at all —
-// the same reasoning the API applies when it refuses those routes outright.
+// Visibility is a convenience; the API remains the permission boundary.
 const NAV = [
+  {href:'/notifications',label:'Notifications',icon:Bell,permission:'notification.view'},
+  {href:'/reconciliation',label:'Reconciliation',icon:Scale,permission:'view.reconciliation'},
   {
     href: "/announcements",
     label: "Announcements",
@@ -131,149 +113,93 @@ const NAV = [
   },
 ];
 
+const GROUPS = [
+  { label: "Overview", paths: ["/dashboard", "/announcements", "/notifications"] },
+  { label: "Money", paths: ["/contributions", "/payouts", "/queue", "/distributions", "/claims", "/ledger", "/reconciliation"] },
+  { label: "Club", paths: ["/members", "/governance"] },
+  { label: "My membership", paths: ["/statement", "/beneficiaries", "/exits", "/assistant"] },
+];
+
 export default function ClubShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, club, role, can, signOut } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef(null);
 
-  const items = NAV.filter(
-    (n) => can(n.permission) && (!n.clubType || n.clubType === club?.clubType),
-  );
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    items: group.paths.map((path) => NAV.find((item) => item.href === path))
+      .filter((item) => can(item.permission) && (!item.clubType || item.clubType === club?.clubType)),
+  })).filter((group) => group.items.length);
 
   async function handleSignOut() {
     await signOut();
     router.replace("/login");
   }
 
-  async function switchClub() {
-    router.push("/select-club");
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-canvas">
-      <header className="bg-navy-950 text-white on-navy">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8">
-          <div className="h-16 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Mark size={26} />
-              <div className="min-w-0">
-                <p className="text-[14px] font-semibold truncate leading-tight">
-                  {club?.name || "Loading"}
-                </p>
-                <p className="text-[12px] text-white/50 leading-tight">
-                  {role} {club?.clubType ? `· ${club.clubType}` : ""}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={switchClub}
-                className="hidden sm:inline-flex items-center gap-1.5 h-8 px-3 rounded text-[13px]
-                           text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <ArrowLeftRight size={13} aria-hidden />
-                Switch club
-              </button>
-
-              <div className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-white/15">
-                <span
-                  className="grid place-items-center w-7 h-7 rounded-full bg-white/10 text-[11px] font-semibold"
-                  aria-hidden
-                >
-                  {initials(user?.fullName || "")}
-                </span>
-                <button
-                  onClick={handleSignOut}
-                  className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded text-[13px]
-                             text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <LogOut size={13} aria-hidden />
-                  Sign out
-                </button>
-              </div>
-
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                className="sm:hidden grid place-items-center w-9 h-9 rounded hover:bg-white/10"
-                aria-label={menuOpen ? "Close menu" : "Open menu"}
-                aria-expanded={menuOpen}
-              >
-                {menuOpen ? <X size={18} /> : <Menu size={18} />}
-              </button>
+    <div className="min-h-screen bg-canvas" onKeyDown={(event) => {
+      if (event.key === "Escape" && menuOpen) {
+        setMenuOpen(false);
+        menuButton.current?.focus();
+      }
+    }}>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 bg-white p-3 text-accent-700">
+        Skip to content
+      </a>
+      <header className="bg-white border-b no-print">
+        <div className="flex min-h-20 items-center justify-between gap-3 px-5 sm:px-8 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Mark size={30} />
+            <div className="min-w-0">
+              <p className="text-[15px] font-semibold break-words">{club?.name || "Loading club…"}</p>
+              <p className="text-[12px] text-ink-500">{role}{club?.clubType ? ` · ${club.clubType}` : ""}</p>
             </div>
           </div>
-
-          {/* Desktop navigation */}
-          <nav
-            className="hidden sm:flex flex-wrap gap-1 -mb-px"
-            aria-label="Club sections"
-          >
-            {items.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cx(
-                    "inline-flex items-center gap-2 px-3 h-11 text-[13.5px] border-b-2 transition-colors",
-                    active
-                      ? "border-white text-white font-medium"
-                      : "border-transparent text-white/55 hover:text-white/90",
-                  )}
-                >
-                  <item.icon size={15} aria-hidden />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="hidden lg:flex items-center gap-4 text-[13px]">
+            <span className="text-ink-500">{user?.fullName}</span>
+            <Link href="/select-club" className="inline-flex items-center gap-2 min-h-11 text-accent-700"><ArrowLeftRight size={15} aria-hidden />Switch club</Link>
+            <button onClick={handleSignOut} className="inline-flex items-center gap-2 min-h-11 text-ink-700"><LogOut size={15} aria-hidden />Sign out</button>
+          </div>
+          <button ref={menuButton} onClick={() => setMenuOpen((open) => !open)}
+            className="lg:hidden inline-flex items-center justify-center gap-2 shrink-0 min-h-11 px-3 border rounded text-[14px]"
+            aria-expanded={menuOpen} aria-controls="club-navigation">
+            {menuOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
+            {menuOpen ? "Close" : "Menu"}
+          </button>
         </div>
-
-        {/* Mobile menu */}
-        {menuOpen && (
-          <div className="sm:hidden border-t border-white/10 px-5 py-3 space-y-1 animate-in">
-            {items.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMenuOpen(false)}
-                className={cx(
-                  "flex items-center gap-2.5 h-10 px-2 rounded text-[14px]",
-                  pathname === item.href
-                    ? "bg-white/10 text-white font-medium"
-                    : "text-white/70",
-                )}
-              >
-                <item.icon size={16} aria-hidden />
-                {item.label}
-              </Link>
-            ))}
-            <div className="pt-2 mt-2 border-t border-white/10 space-y-1">
-              <button
-                onClick={switchClub}
-                className="flex w-full items-center gap-2.5 h-10 px-2 rounded text-[14px] text-white/70"
-              >
-                <ArrowLeftRight size={16} aria-hidden />
-                Switch club
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="flex w-full items-center gap-2.5 h-10 px-2 rounded text-[14px] text-white/70"
-              >
-                <LogOut size={16} aria-hidden />
-                Sign out
-              </button>
-            </div>
-          </div>
-        )}
       </header>
-
-      <main className="flex-1 max-w-6xl w-full mx-auto px-5 sm:px-8 py-8">
-        {children}
-      </main>
+      <div className="lg:flex lg:min-h-[calc(100vh-80px)]">
+        <aside id="club-navigation" className={cx("no-print bg-white border-b lg:border-b-0 lg:border-r lg:w-56 lg:shrink-0", menuOpen ? "block" : "hidden lg:block")}>
+          <nav aria-label="Club sections" className="p-4 space-y-5 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
+            {groups.map((group) => (
+              <section key={group.label} aria-label={group.label}>
+                <h2 className="px-3 mb-1 text-[11px] font-semibold tracking-wider uppercase text-ink-500">{group.label}</h2>
+                <ul className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const active = pathname === item.href;
+                    return <li key={item.href}><Link href={item.href}
+                      onClick={() => setMenuOpen(false)} aria-current={active ? "page" : undefined}
+                      className={cx("flex items-center gap-3 min-h-11 px-3 rounded text-[14px] border-l-2 transition-colors",
+                        active ? "bg-accent-50 border-accent-600 text-accent-700 font-medium" : "border-transparent text-ink-700 hover:bg-canvas hover:text-ink-900")}>
+                      <item.icon size={17} aria-hidden />{item.href === "/queue" ? "Payout queue" : item.label}
+                    </Link></li>;
+                  })}
+                </ul>
+              </section>
+            ))}
+            <div className="lg:hidden border-t pt-3 text-[14px]">
+              <p className="px-3 text-ink-500 text-[12px]">{user?.fullName}</p>
+              <Link href="/select-club" className="flex items-center gap-3 min-h-11 px-3 text-accent-700"><ArrowLeftRight size={17} aria-hidden />Switch club</Link>
+              <button onClick={handleSignOut} className="flex items-center gap-3 min-h-11 px-3"><LogOut size={17} aria-hidden />Sign out</button>
+            </div>
+          </nav>
+        </aside>
+        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 w-full max-w-7xl mx-auto px-5 sm:px-8 py-8">{children}</main>
+      </div>
     </div>
   );
 }

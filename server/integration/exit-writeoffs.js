@@ -270,6 +270,7 @@ async function main() {
       throw new Error("Injected failure after debt allocation");
     return realAppend(client, entry);
   };
+  console.log("INFO: the following injected error is expected; verifying transaction rollback.");
   try {
     await approve(carried.resolution_id, 500);
   } finally {

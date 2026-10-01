@@ -63,6 +63,8 @@ pool.on("error", (err) => {
 // described in SDD 4.1.
 
 const TENANT_SCOPED_TABLES = [
+  "notification", "standing_change",
+  "capture_receipt", "receipt_allocation", "credit_application", "payout_effect",
   "club",
   "constitution",
   "member",

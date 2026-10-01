@@ -149,8 +149,31 @@ function validateConsistency(c) {
             errors.yearEndDay = "Give the day of the month the club's year ends on, 1 to 31.";
         }
     }
-
+    // REQ-44, REQ-101 to REQ-103: standing thresholds, in missed contributions.
+    // Optional until a club sets them, so existing constitutions stay valid.
+    const thresholdFields = ["warningAfterMissed", "suspensionAfterMissed", "expulsionAfterMissed"];
+    const thresholdsGiven = thresholdFields.some(
+        (f) => c[f] !== undefined && c[f] !== null && c[f] !== ""
+    );
+    if (thresholdsGiven) {
+        for (const f of thresholdFields) {
+            const n = Number(c[f]);
+            if (!Number.isInteger(n) || n < 1) {
+                errors[f] = "Give a whole number of missed contributions, 1 or more.";
+            }
+        }
+        if (thresholdFields.every((f) => !errors[f])) {
+            const w = Number(c.warningAfterMissed);
+            const s = Number(c.suspensionAfterMissed);
+            const e = Number(c.expulsionAfterMissed);
+            if (!(w < s && s < e)) {
+                errors.expulsionAfterMissed =
+                    "The thresholds must increase: warning, then suspension, then expulsion.";
+            }
+        }
+    }
     return { valid: Object.keys(errors).length === 0, errors };
+    
 }
 
 module.exports = {

@@ -234,6 +234,16 @@ export const claims = {
     api.post(`/api/claims/dependants/${dependantId}/remove`),
 };
 
+export const notifications = {
+  list: (opts) => api.get("/api/notifications", opts),
+  send: (details) => api.post("/api/notifications", details)
+};
+
+export const reconciliation = {
+  list: (opts) => api.get("/api/reconciliation", opts),
+  record: (details) => api.post("/api/reconciliation", details)
+};
+
 export const platform = {
   overview: (opts) => api.get("/api/platform", opts),
   createClub: (details) => api.post("/api/platform/clubs", details),

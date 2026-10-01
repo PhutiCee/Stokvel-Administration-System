@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { money, fmtDate } from "@/lib/format";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/shell/ClubShell";
 import { Action, Feedback, fieldClass } from "@/components/ui/Workflow";
 export default function Exits() {
   const { can, role, membership } = useSession();
+  const [confirmation,setConfirmation]=useState(null);
   const [selectedWriteoffs, setSelectedWriteoffs] = useState({});
   const [settings, setSettings] = useState(null),
     [notices, setNotices] = useState([]),
@@ -53,6 +55,7 @@ export default function Exits() {
   }
   return (
     <>
+      {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} requireReason={false} onClose={()=>setConfirmation(null)} onConfirm={async()=>{await api.post('/api/exits'+confirmation.path,confirmation.data);await load();setMessage('Saved.');}} />}
       <PageHeader
         title="Membership exits"
         description="Give notice, review the calculated settlement, then obtain Chairperson approval."
@@ -76,18 +79,17 @@ export default function Exits() {
             <>
               <p className="my-2">
                 An approved calculation mapping is required before notice can be
-                calculated. Conditional rules must be resolved before using
-                these settings.
+                calculated. For a conditional rule, record both percentages and the exact adopted threshold.
               </p>
               {can("exit.configure") && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    run("/settings", {
+                    setConfirmation({path:"/settings", title:"Record adopted exit calculation",description:"This mapping is permanent for this constitution version. Confirm the percentages, threshold and deductions match the adopted clause.",data:{
                       constitutionId: settings.constitution.id,
                       policy,
                       attest,
-                    });
+                    }});
                   }}
                 >
                   <fieldset disabled={busy}>
@@ -146,6 +148,20 @@ export default function Exits() {
                         {label}
                       </label>
                     ))}
+                    <label className="block my-3">Conditional forfeiture
+                      <select className={fieldClass} value={policy.condition?.metric || ''} onChange={e=>setPolicy({...policy,condition:e.target.value ? {metric:e.target.value,threshold:1,evaluateAt:'notice',afterPercent:'',definition:''} : undefined})}>
+                        <option value="">Same percentage throughout membership</option>
+                        <option value="membershipDays">Membership days</option>
+                        <option value="completedPaidCycles">Completed fully paid cycles since joining</option>
+                      </select>
+                    </label>
+                    {policy.condition && <div className="space-y-3 border-t pt-3">
+                      <p className="text-sm">The forfeiture percentage above applies BEFORE the threshold. A completed cycle must be closed, fully paid, start on or after joining and have no written-off debt. Use it for a rotation only if that matches the club’s adopted definition.</p>
+                      <label className="block">Threshold<input type="number" min="1" max="10000" required className={fieldClass} value={policy.condition.threshold} onChange={e=>setPolicy({...policy,condition:{...policy.condition,threshold:Number(e.target.value)}})} /></label>
+                      <label className="block">Forfeiture percentage at or after threshold<input required className={fieldClass} value={policy.condition.afterPercent} onChange={e=>setPolicy({...policy,condition:{...policy.condition,afterPercent:e.target.value}})} /></label>
+                      <label className="block">Evaluate condition on<select className={fieldClass} value={policy.condition.evaluateAt} onChange={e=>setPolicy({...policy,condition:{...policy.condition,evaluateAt:e.target.value}})}><option value="notice">Notice date (fixed)</option><option value="settlement">Settlement date (reassessed)</option></select></label>
+                      <label className="block">Adopted definition and clause<textarea required minLength={10} maxLength={2000} className={fieldClass} value={policy.condition.definition} onChange={e=>setPolicy({...policy,condition:{...policy.condition,definition:e.target.value}})} /></label>
+                    </div>}
                     <label className="block my-3">
                       <input
                         required
@@ -169,7 +185,7 @@ export default function Exits() {
       )}
       <Action
         disabled={busy || !settings?.mapping}
-        onClick={() => run("/", {})}
+        onClick={() => setConfirmation({path:"/",data:{},title:"Submit exit notice",description:"Your notice and the constitution version will be recorded. No money is posted until settlement approval."})}
       >
         Submit my exit notice
       </Action>
@@ -213,6 +229,9 @@ export default function Exits() {
               ))}
             </dl>
           )}
+          {n.assessment?.calculation.conditionResult && <p className="text-sm my-3">
+            Condition: {n.assessment.calculation.conditionResult.definition}. Recorded value: {n.assessment.calculation.conditionResult.actual} / {n.assessment.calculation.conditionResult.threshold} as at {fmtDate(n.assessment.calculation.conditionResult.evaluatedOn)}. Applied forfeiture: {n.assessment.calculation.appliedForfeitPercent}%.
+          </p>}
           {n.writeoff_resolution_id && (
             <p className="my-2">
               Contribution debt written off under resolution{" "}
@@ -257,11 +276,11 @@ export default function Exits() {
                 <Action
                   disabled={busy}
                   onClick={() =>
-                    run("/" + n.notice_id + "/decision", {
+                    setConfirmation({path:"/" + n.notice_id + "/decision",title:"Approve settlement and exit",description:`Repay ${money(n.assessment?.calculation.repayable)} and retain ${money(n.assessment?.calculation.forfeited)}. This ends ${n.full_name}'s membership and applies any selected voted debt write-off.`,data:{
                       decision: "approve",
                       writeoffResolutionId:
                         selectedWriteoffs[n.notice_id] || null,
-                    })
+                    }})
                   }
                 >
                   Approve settlement and exit

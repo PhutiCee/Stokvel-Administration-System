@@ -8,7 +8,7 @@
  */
 
 const COLUMNS = `
-    p.payout_id, p.status, p.payout_type, p.amount,
+    p.payout_id, p.status, p.reversed_entry_id, p.payout_type, p.amount,
     p.member_id, ru.full_name AS recipient_name,
     p.cycle_id, cy.sequence_number AS cycle_sequence,
     p.constitution_version, p.eligibility_rule_applied,

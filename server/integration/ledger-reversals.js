@@ -97,8 +97,17 @@ async function main() {
   const reversalService = require("../src/modules/ledger/reversals.service");
   const reversalRepo = require("../src/modules/ledger/reversals.repo");
   const { forClub } = require("../src/db/pool");
+  let payoutCycle=0;
   async function entry(type, amount, club = 0) {
-    return ledger.appendEntry(
+    let payoutId=null;
+    if(['Payout','Claim'].includes(type)) {
+      const memberId=people[3].member.member_id;
+      await database.query('UPDATE member SET queue_position=1 WHERE member_id=$1',[memberId]);
+      const cycle=await one(`INSERT INTO cycle(club_id,sequence_number,start_date,due_date,status) VALUES($1,$2,$3,$3,'Closed') RETURNING cycle_id`,[clubs[0].club_id,++payoutCycle,todayIso()]);
+      const p=await one(`INSERT INTO payout(club_id,member_id,payout_type,status,amount,cycle_id,constitution_version,eligibility_rule_applied,assessment_at_initiation,assessment_at_approval,initiated_by,approved_by,approved_at) VALUES($1,$2,'Rotation','Approved',$3,$4,1,'Fixture','{}','{}',$5,$6,now()) RETURNING payout_id`,[clubs[0].club_id,memberId,String(-Number(amount)),cycle.cycle_id,people[1].user.user_id,people[0].user.user_id]);
+      payoutId=p.payout_id;
+    }
+    const result=await ledger.appendEntry(
       { query: pool.query },
       {
         clubId: clubs[club].club_id,
@@ -106,9 +115,12 @@ async function main() {
         entryType: type,
         amount,
         description: "Reversal integration " + type,
+        payoutId,
         postedBy: people[1].user.user_id,
       },
     );
+    if(payoutId)await require('../src/modules/ledger/compensation.repo').recordPayout(forClub(clubs[0].club_id),result.entryId,payoutId,[people[3].member.member_id],[people[3].member.member_id]);
+    return result;
   }
   const fund = await entry("Adjustment", "1000.00");
   const reverseUrl = (id) => `/api/ledger/${id}/reverse`;
@@ -220,7 +232,8 @@ async function main() {
   assert.equal(done.status, "Posted");
   assert.equal((await json("/api/ledger/pool", 1)).balance, "0.00");
   await json(post(pending.request_id), 1, "POST", {}, 422);
-  const claim = await entry("Claim", "-30.00");
+  // Rejection/retry is shared; the full burial claim lifecycle is in source-compensation.js.
+  const claim = await entry("Payout", "-30.00");
   const rejected = await json(
     reverseUrl(claim.entryId),
     1,

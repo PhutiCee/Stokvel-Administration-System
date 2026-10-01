@@ -29,6 +29,7 @@ export default function DistributionsPage() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
   const [cancelling, setCancelling] = useState(null);
 
   const load = useCallback(async (signal) => {
@@ -107,12 +108,12 @@ export default function DistributionsPage() {
         <OpenDistribution
           distribution={open}
           can={can}
-          onApprove={() => act(() => api.approve(open.distributionId))}
+          onApprove={() => setConfirmation({ title: "Approve distribution", description: "Post all member payments for this distribution? Review the allocations before confirming.", run: () => api.approve(open.distributionId) })}
           onCancel={() => setCancelling(open)}
           busy={busy}
         />
       ) : (
-        <PreviewCard preview={preview} can={can} onInitiate={() => act(() => api.initiate())} busy={busy} />
+        <PreviewCard preview={preview} can={can} onInitiate={() => setConfirmation({ title: "Initiate distribution", description: "Submit the displayed allocations for approval by a different officer?", run: () => api.initiate() })} busy={busy} />
       )}
 
       <h2 className="text-sm font-semibold text-ink-900 mt-8 mb-3">History</h2>
@@ -146,6 +147,9 @@ export default function DistributionsPage() {
         />
       )}
 
+      {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description}
+        requireReason={false} confirmVariant="primary" onClose={() => setConfirmation(null)}
+        onConfirm={async () => { await confirmation.run(); await load(); }} />}
       {cancelling && (
         <ConfirmDialog
           title="Cancel this distribution"

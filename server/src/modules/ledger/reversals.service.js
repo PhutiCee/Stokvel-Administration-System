@@ -1,6 +1,7 @@
 "use strict";
 const repo = require("./reversals.repo");
 const ledger = require("./ledger.service");
+const compensation = require("./compensation.repo");
 const { withClubTransaction } = require("../../db/tx");
 const { toCents, toNumeric } = require("../../lib/money");
 const {
@@ -63,8 +64,11 @@ async function post(tx, client, r, e, actor) {
     reason: r.reason,
     contributionId: e.contribution_id,
     penaltyId: e.penalty_id,
+    payoutId: e.payout_id,
     postedBy: actor.userId,
   });
+  if (e.entry_type === "Contribution") await compensation.reverseReceipt(tx,e);
+  if (needsApproval(e)) await compensation.reversePayout(tx,e,entry.entryId);
   return repo.posted(tx, r.request_id, entry.entryId, actor.userId);
 }
 async function reverse(db, id, input, ctx) {

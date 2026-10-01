@@ -183,7 +183,7 @@ async function insertClaimPayout(db, p) {
 }
 
 async function getPayoutForClaim(db, claimId) {
-    return db.one(`SELECT payout_id, amount FROM payout WHERE club_id = $1 AND claim_id = $2`, [db.clubId, claimId]);
+    return db.one(`SELECT payout_id, amount FROM payout WHERE club_id = $1 AND claim_id = $2 AND status<>'Cancelled' AND reversed_entry_id IS NULL`, [db.clubId, claimId]);
 }
 
 async function markClaimPayoutApproved(db, payoutId, { approvedBy, assessment }) {

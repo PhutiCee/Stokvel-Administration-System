@@ -190,7 +190,8 @@ async function previewNextPayout(db) {
 function presentPayout(p) {
     return {
         payoutId: p.payout_id,
-        status: p.status,
+        status: p.reversed_entry_id ? "Reversed" : p.status,
+        reversalEntryId: p.reversed_entry_id,
         payoutType: p.payout_type,
         amount: p.amount,
         recipient: { memberId: p.member_id, fullName: p.recipient_name },
@@ -333,8 +334,10 @@ async function approvePayout(db, payoutId, { actor, audit }) {
 
         await repo.markApproved(tx, payoutId, { approvedBy: actor.userId, assessment: publicAssessment(a) });
 
-        // REQ-73.
+        const before = (await queueRepo.listQueueRows(tx)).map(r=>r.member_id);
         await queueService.advanceAfterPayout(tx, p.member_id);
+        const after = (await queueRepo.listQueueRows(tx)).map(r=>r.member_id);
+        await require('../ledger/compensation.repo').recordPayout(tx,entry.entryId,p.payout_id,before,after);
 
         return { p, a, entry };
     });

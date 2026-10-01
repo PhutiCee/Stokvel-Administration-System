@@ -13,9 +13,10 @@ export default function ReversalRequests({ requests, onChanged }) {
     <section className="mb-6 space-y-3">
       <h2 className="font-semibold">Reversal requests</h2>
       <Alert tone="attention">
-        A reversal corrects the ledger and pool balance. It does not undo a
-        payout's queue turn, reopen a claim, or recalculate contribution
-        allocations. The original records remain.
+        A reversal corrects the ledger and its recorded allocations together. A
+        rotation payout restores its queue turn; a claim returns for fresh approval.
+        Later conflicting activity or missing historical evidence prevents posting.
+        Original receipts and approvals remain visible.
       </Alert>
       {!requests.length && (
         <p className="text-sm text-ink-500">No reversal requests.</p>

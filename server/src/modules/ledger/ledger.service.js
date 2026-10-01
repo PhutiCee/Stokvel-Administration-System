@@ -52,6 +52,7 @@ async function appendEntry(
     contributionId = null,
     penaltyId = null,
     postedAt = null,
+    payoutId = null,
   },
 ) {
   if (!clubId) throw new Error("appendEntry requires a club.");
@@ -75,9 +76,9 @@ async function appendEntry(
     `INSERT INTO ledger_entry
              (club_id, member_id, entry_type, amount, resulting_balance,
               description, reference, reverses_id, reason,
-              contribution_id, penalty_id, posted_by, posted_at)
+              contribution_id, penalty_id, posted_by, posted_at, payout_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                 COALESCE($13::timestamptz, now()))
+                 COALESCE($13::timestamptz, now()), $14)
          RETURNING entry_id, amount, resulting_balance, posted_at`,
     [
       clubId,
@@ -93,6 +94,7 @@ async function appendEntry(
       penaltyId,
       postedBy,
       postedAt,
+      payoutId,
     ],
   );
 

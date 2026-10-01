@@ -1183,3 +1183,56 @@ advisory/rejected/wrong-member/stale refusals, failure AFTER write-off allocatio
 full rollback, final cash balance, preserved original source money, blocked recapture,
 immutable allocations and platform aggregate/privacy boundaries. Existing governance,
 screens, reversal and completion suites pass. Browser acceptance remains manual.
+
+
+## 45. Source compensation and conditional exits — 1 October 2026
+
+Migrations 021 and 024 retain immutable receipt allocations, credit applications and
+payout effects. Reversal appends an equal/opposite ledger row and undoes the recorded
+source effects within the same club-locked transaction. An exception rolls back both.
+Reversal links now preserve payout_id; appendEntry previously discarded that argument.
+Rotation reversal requires the recorded queue to match and no later conflicting payout.
+It preserves the approved payout, marks its reversal and restores queue eligibility.
+Burial reversal returns the claim to Lodged; repayment needs fresh initiation and
+approval by another officer. Original payout approvals remain auditable.
+
+No aggregate reconstruction is attempted for legacy receipts or payouts without
+source evidence. Exit settlements and distributions are compound workflows; their
+individual payout rows cannot be safely reversed independently. These are explicitly
+refused, as are written-off obligations and ended memberships. Support for whole
+compound-workflow reversal is NOT complete. Penalty assessments use the existing
+Chairperson waiver action, not the generic reversal action.
+
+Conditional exits accept an explicit adopted definition, threshold, before/after
+forfeiture rates and evaluation date. Supported metrics are membership days and
+closed fully-paid cycles beginning after membership. Notice facts are immutable;
+settlement evaluation is rechecked before approval and stale assessments require
+reassessment. A paid-cycle threshold is not automatically a complete queue rotation.
+Other constitutional predicates require a future mapping; free text is not guessed.
+
+Accounting decision 43 remains open: positive penalty assessments and subsequent
+cash receipts can overstate a cash interpretation of the pool. REQ-112 also calls
+penalties expenditure. Team approval of cash/accrual treatment and any migration of
+historical balances is required before changing that model. Retained exit forfeiture
+is not a second receipt: its zero Adjustment points to the assessment. These changes
+do not constitute approval of an accounting policy.
+
+## 46. Teammate integration boundary — 1 October 2026
+
+Merged lindo 0eba26e377f23930e1f72db0704d3899a4991cb4 and racha-default
+50f8a2c7848dd2465a773398d82bdddd3c194e92. Their conflicting migration 016 files
+become 022 (notifications) and 023 (standing). Existing 016 governance is preserved.
+Routes, sidebar and permissions are integrated; reconciliation uses the selected
+South African date and a club-locked snapshot, rejects invalid dates and requires
+an explanation for differences. Standing calculations deduct write-offs and use
+cycle-pinned grace periods. No scheduler or governance threshold editor is invented.
+
+The existing racha assistant is retained when resolving the shared assistant file.
+The incoming Gemini prompt wiring would forward personal and financial records to
+an external service. It is not connected; its owner must reconcile that behavior
+with the SRS. No external model or notification provider was contacted.
+
+The web follows the SDD burgundy/light palette with grouped navigation and a mobile
+menu. Cash-writing capture and payout/claim/distribution approvals now have a separate
+confirmation dialog. Keyboard users can dismiss idle dialogs with Escape and focus
+stays within the dialog. Member permissions remain enforced by the API.

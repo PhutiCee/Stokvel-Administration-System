@@ -172,6 +172,7 @@ async function main() {
   const policy = {
     period: "membership",
     forfeitPercent: "10",
+    condition: {metric:"membershipDays",threshold:10000,evaluateAt:"notice",afterPercent:"0",definition:"Fixture rule: retain ten percent until ten thousand membership days."},
     deductPayouts: false,
     deductPenalties: true,
     deductCosts: false,
@@ -226,6 +227,10 @@ async function main() {
   );
   assert.equal(assessment.calculation.repayable, "90.00");
   assert.equal(assessment.calculation.forfeited, "10.00");
+  const frozen = await one('SELECT condition_facts FROM exit_notice WHERE notice_id=$1',[exit.notice_id]);
+  assert.equal(assessment.calculation.conditionResult.actual,frozen.condition_facts.membershipDays);
+  assert.equal(assessment.calculation.conditionResult.evaluatedOn,frozen.condition_facts.evaluatedOn);
+  await assert.rejects(database.query("UPDATE exit_notice SET condition_facts='{}' WHERE notice_id=$1",[exit.notice_id]));
   const memberDash = await json("/api/dashboard", 3);
   assert.equal(
     memberDash.indicators.find((m) => m.key === "paid").value,

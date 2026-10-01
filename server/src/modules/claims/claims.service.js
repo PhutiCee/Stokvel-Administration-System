@@ -285,6 +285,7 @@ async function approveClaimPayment(db, claimId, { actor, audit }) {
         });
         await repo.markClaimPayoutApproved(tx, payout.payout_id, { approvedBy: actor.userId, assessment: { postedAmount: entry.amount } });
         await repo.markApproved(tx, claimId, { approvedBy: actor.userId });
+        await require('../ledger/compensation.repo').recordPayout(tx,entry.entryId,payout.payout_id);
         return { c, resultingBalance: entry.resultingBalance };
     });
 

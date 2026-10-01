@@ -104,6 +104,8 @@ function createApp() {
     app.use(`/api/${name}`, require(`./modules/${name}/${name}.routes`));
   }
 
+  app.use('/api/notifications',require('./modules/notifications/notifications.routes'));
+  app.use('/api/reconciliation',require('./modules/reconciliation/reconciliation.routes'));
   // 7, 8.
   app.use(notFoundHandler);
   app.use(errorHandler);

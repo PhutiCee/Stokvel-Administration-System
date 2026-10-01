@@ -20,7 +20,7 @@ import { useSession } from "@/lib/session";
 import { payouts as api, ApiError } from "@/lib/api";
 import { money, fmtDate, fmtDateTime } from "@/lib/format";
 
-const STATUS_TONE = { Initiated: "attention", Approved: "positive", Cancelled: "neutral" };
+const STATUS_TONE = { Initiated: "attention", Approved: "positive", Cancelled: "neutral", Reversed: "neutral" };
 
 export default function PayoutsPage() {
   const { club, can, membership } = useSession();
@@ -28,6 +28,7 @@ export default function PayoutsPage() {
   const [list, setList] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
   const [cancelling, setCancelling] = useState(null);
 
   const load = useCallback(async (signal) => {
@@ -97,12 +98,12 @@ export default function PayoutsPage() {
           payout={open}
           myUserId={membership && open.initiated.userId}
           can={can}
-          onApprove={() => act(() => api.approve(open.payoutId))}
+          onApprove={() => setConfirmation({ title: "Approve payout", description: `Pay ${money(open.amount)} to ${open.recipient.fullName} and advance the queue?`, run: () => api.approve(open.payoutId) })}
           onCancel={() => setCancelling(open)}
           busy={busy}
         />
       ) : (
-        <PreviewCard preview={preview} can={can} onInitiate={() => act(() => api.initiate())} busy={busy} />
+        <PreviewCard preview={preview} can={can} onInitiate={() => setConfirmation({ title: "Initiate payout", description: "Submit the assessed payout for approval by a different officer?", run: () => api.initiate() })} busy={busy} />
       )}
 
       <h2 className="text-sm font-semibold text-ink-900 mt-8 mb-3">History</h2>
@@ -139,6 +140,9 @@ export default function PayoutsPage() {
         </Card>
       )}
 
+      {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description}
+        requireReason={false} confirmVariant="primary" onClose={() => setConfirmation(null)}
+        onConfirm={async () => { await confirmation.run(); await load(); }} />}
       {cancelling && (
         <ConfirmDialog
           title="Cancel this payout"

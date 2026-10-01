@@ -8,6 +8,36 @@ UC7 is implemented below. Other members retain their existing assignments.
 Every requirement below was checked against the actual code, not just against
 `traceability.md`, which turned out to be incomplete (see section 6).
 
+## Current status — 1 October 2026 integration follow-through
+
+This update supersedes the historical task descriptions below. See
+`docs/integration-handoff.md` for migration, test and delivery instructions.
+
+- Conditional exit mappings now support a club-defined membership-day or completed,
+  fully paid-cycle threshold, evaluated at notice or settlement. Notice facts are
+  frozen; settlement facts are rechecked. The club must explicitly define what
+  “one full rotation” means; the application does not assume a meaning.
+- New receipts record immutable allocations and credit consumption. Reversals undo
+  their contribution, penalty and credit effects atomically. Closed-cycle recapture
+  requires a one-use link to the reversed receipt.
+- Supported rotation reversals restore the recorded queue and make the cycle payable
+  again. Claim reversals reopen the claim for fresh two-person approval. Original
+  approvals remain. Historical entries without source evidence, ended memberships,
+  conflicting later activity, exit settlements and whole distributions cannot be
+  automatically reversed. These boundaries remain work, not completed features.
+- Available `lindo` and `racha-default` branch changes are merged. Notifications feed,
+  reconciliation capture and standing rules are integrated. Notification delivery,
+  retry/preferences, standing scheduling/configuration and other assigned features
+  still belong to their owners. No claim of full SRS completion is made.
+- Penalty accounting remains a team decision: the existing positive assessment and
+  receipt treatment conflicts with REQ-112. Retained exit forfeiture is a zero-cash
+  Adjustment with immutable assessment evidence. No historical money is reclassified.
+- Reproducible isolated integration runner now exists: `npm run test:integration`.
+  Real browser flow checks: `npm run test:browser` (setup in the handoff).
+- Migrations now run through **024**; next free number is **025**.
+
+## Historical task inventory
+
 ## Update — 30 September 2026
 
 Membership/communications delivery: beneficiaries and immutable announcements are
@@ -126,10 +156,8 @@ attempts are refused. The Ledger screen exposes requests and actions.
 REQ-63's Chairperson penalty-waiver flow remains the exception to general REQ-92.
 See decision 42 and `node server/integration/ledger-reversals.js`.
 
-**Boundary to resolve separately:** ledger reversal does not rewind contribution
-allocations/credits, queue positions or claim/payout workflow status. That requires
-source-operation compensation rules and allocation history not provided by these
-requirements. Do not treat a ledger reversal as cancellation of the original process.
+**Updated:** migration 021 adds source compensation for newly tracked receipts,
+rotation payouts and claims. See the current status above for explicit refusal boundaries.
 
 ### 4.2 Member lifecycle
 

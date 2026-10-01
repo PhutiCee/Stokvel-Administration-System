@@ -33,7 +33,7 @@ in the application tier, which is where the design document places them. See
 
 ## Getting it running
 
-You need Node.js 18.17 or later and a Supabase project.
+You need Node.js 18.18 or later (Node.js 22 LTS recommended) and a Supabase project.
 
 ### 1. Install
 
@@ -302,3 +302,48 @@ npm run build
 ```
 
 Integration tests use an isolated engine, not the configured shared database.
+
+
+### Installing updates on Windows
+
+Stop the running Next.js development server with Ctrl+C before installing dependencies.
+The `EPERM` warning for `next-swc.win32-x64-msvc.node` means Windows could not
+remove a loaded native file; it does not mean the application tests failed.
+Close the terminals running this project's development server, then run `npm ci`
+from the repository root. This installs the versions in the committed lockfile.
+If the file is still locked, restart Windows and run `npm ci` before starting the
+application. For a recurring lock in a OneDrive-synced checkout, keep the working
+checkout outside OneDrive. Do not delete your database or run `migrate:reset` to
+resolve an npm file-lock warning.
+
+`test:exit-writeoffs` deliberately injects an error after debt allocation to prove
+that the transaction rolls back. An INFO line now labels that expected server
+error. The command must finish with “Exit write-off integration passed” and exit
+code 0. Unexpected errors still use normal server logging.
+
+### Shared interface and dependency updates
+
+The shared shell uses grouped, permission-filtered navigation: Overview, Money,
+Club and My membership. At widths below 1024px, the Menu button reveals those
+same groups; Escape closes it and returns focus to the button. The active club
+and role stay visible. Burgundy action colours and warm neutral surfaces follow
+the SDD section 6.4 references. The sign-in form keeps the existing phone/password
+authentication. Google sign-in from the prototype is not implemented here.
+System fonts avoid a font download during builds and on members' connections.
+
+The dependency update moves Next.js from 14 to 15.5.27, retaining React 18.3.1
+within that release's declared peer range. Express remains on version 4.
+PostCSS is pinned to 8.5.28, including Next's nested copy, to cover the audited
+source-map vulnerabilities. Commit package manifests and package-lock.json
+together when integrating this change. Run `npm ci`, `npm audit`, `npm test`,
+`npm run check`, the integration scripts and `npm run build` after merging.
+
+### Integrated completion update (1 October 2026)
+
+Conditional exits, source-compensating reversals and available teammate branches are
+integrated. Read [the integration handoff](docs/integration-handoff.md) before upgrading:
+it covers migrations 021–024, existing migration conflicts, verified behavior and
+remaining accounting/teammate boundaries. Apply with `npm ci` and `npm run migrate`;
+do not reset or reseed your existing database. Run `npm run test:integration` for the
+six isolated database suites and `npm run test:browser` for real browser flows after
+the Playwright setup described in the handoff.

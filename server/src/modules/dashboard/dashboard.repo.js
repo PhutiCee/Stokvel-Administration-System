@@ -40,6 +40,6 @@ exports.exits = (db) =>
   );
 exports.overdue = (db, today) =>
   db.many(
-    `SELECT c.cycle_id,c.sequence_number,c.due_date::text FROM cycle c JOIN club b ON b.club_id=c.club_id WHERE c.club_id=$1 AND b.club_type='Rotating' AND c.due_date<$2::date-7 AND NOT EXISTS(SELECT 1 FROM payout p WHERE p.club_id=c.club_id AND p.cycle_id=c.cycle_id AND p.payout_type='Rotation' AND p.status='Approved') ORDER BY c.due_date`,
+    `SELECT c.cycle_id,c.sequence_number,c.due_date::text FROM cycle c JOIN club b ON b.club_id=c.club_id WHERE c.club_id=$1 AND b.club_type='Rotating' AND c.due_date<$2::date-7 AND NOT EXISTS(SELECT 1 FROM payout p WHERE p.club_id=c.club_id AND p.cycle_id=c.cycle_id AND p.payout_type='Rotation' AND p.status='Approved' AND p.reversed_entry_id IS NULL) ORDER BY c.due_date`,
     [db.clubId, today],
   );

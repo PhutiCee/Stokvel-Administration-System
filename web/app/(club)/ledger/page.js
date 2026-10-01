@@ -73,7 +73,7 @@ export default function LedgerPage() {
       {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
       <ReversalRequests requests={requests} onChanged={()=>load()} />
       {reversing && <ConfirmDialog title={['Payout','Claim'].includes(reversing.entryType)?"Request payout reversal":"Reverse ledger entry"}
-        description={`Original: ${money(reversing.amount)}. An equal and opposite entry will be posted${['Payout','Claim'].includes(reversing.entryType)?' only after Chairperson approval and a Treasurer confirms posting':''}. Operational records and allocations are not undone.`}
+        description={`Original: ${money(reversing.amount)}. An equal and opposite entry will be posted${['Payout','Claim'].includes(reversing.entryType)?' only after Chairperson approval and a Treasurer confirms posting':''}. Recorded allocations and supported payout effects will be corrected atomically. Original records remain. Conflicting later activity prevents posting.`}
         confirmLabel={['Payout','Claim'].includes(reversing.entryType)?"Request approval":"Post reversal"}
         onClose={()=>setReversing(null)} onConfirm={async reason=>{
           const result=await api.reverse(reversing.entryId,reason);

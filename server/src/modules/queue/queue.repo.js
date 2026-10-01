@@ -104,7 +104,7 @@ async function earliestUnpaidCycle(db) {
                  WHERE p.club_id = $1
                    AND p.cycle_id = cy.cycle_id
                    AND p.payout_type = 'Rotation'
-                   AND p.status <> 'Cancelled')
+                   AND p.status <> 'Cancelled' AND p.reversed_entry_id IS NULL)
           ORDER BY cy.sequence_number ASC
           LIMIT 1`,
         [db.clubId]
@@ -146,7 +146,7 @@ async function hasPaidAnyone(db) {
         `SELECT (EXISTS (SELECT 1 FROM ledger_entry
                           WHERE club_id = $1 AND entry_type = 'Payout')
               OR EXISTS (SELECT 1 FROM payout
-                          WHERE club_id = $1 AND status <> 'Cancelled')) AS paid`,
+                          WHERE club_id = $1 AND status <> 'Cancelled' AND reversed_entry_id IS NULL)) AS paid`,
         [db.clubId]
     );
     return row.paid;
@@ -179,7 +179,7 @@ async function usablePayRuling(db, memberId) {
                 SELECT 1 FROM payout p
                  WHERE p.club_id = $1
                    AND p.arrears_decision_id = d.decision_id
-                   AND p.status <> 'Cancelled')
+                   AND p.status <> 'Cancelled' AND p.reversed_entry_id IS NULL)
             AND d.decided_at > COALESCE((
                 SELECT max(x.decided_at) FROM queue_arrears_decision x
                  WHERE x.club_id = $1 AND x.member_id = $2 AND x.decision = 'Deferred'

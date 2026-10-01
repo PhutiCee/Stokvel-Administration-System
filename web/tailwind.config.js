@@ -1,43 +1,27 @@
 /** @type {import('tailwindcss').Config} */
 
-// Design tokens.
-//
-// The palette is carried over unchanged from the approved UI prototype, so the
-// delivered system looks like the design the group signed off on.
-//
-//   navy    the signed-in chrome and the sign-in panel. Institutional, calm,
-//           and dark enough that white text on it clears WCAG AA comfortably.
-//   ink     text, in four weights of grey rather than pure black
-//   accent  the single action colour. Exactly one thing on a screen is this
-//           colour: the action the person came to perform.
-//   pos     money in, paid, in good standing
-//   warn    needs attention but is not yet wrong
-//   exc     an exception: a refusal, an unexplained difference, an arrear
-//
-// There is no decorative colour in this system. Every colour above carries a
-// meaning, because in a book of account a colour that means nothing is worse
-// than no colour at all.
+// Burgundy actions and warm neutrals follow the SDD section 6.4 screens.
+// Keep the existing token names for compatibility with feature branches.
 
 module.exports = {
   content: ["./app/**/*.{js,jsx}", "./components/**/*.{js,jsx}", "./lib/**/*.{js,jsx}"],
   theme: {
     extend: {
       colors: {
-        navy:    { 950: "#0A1628", 900: "#101E36", 800: "#1A2B47", 700: "#27395A", 600: "#3A4E72" },
-        canvas:  "#F7F8FA",
+        navy:    { 950: "#44202C", 900: "#512735", 800: "#612F40", 700: "#713B4D", 600: "#855569" },
+        canvas:  "#FAFAF8",
         surface: "#FFFFFF",
-        line:    { DEFAULT: "#E4E7EC", strong: "#D0D5DD" },
-        ink:     { 900: "#101828", 700: "#344054", 500: "#667085", 400: "#98A2B3" },
-        accent:  { 50: "#EEF1FE", 100: "#DFE5FD", 600: "#2F4BD6", 700: "#2439AC" },
+        line:    { DEFAULT: "#E3E2E0", strong: "#CCCAC7" },
+        ink:     { 900: "#20201F", 700: "#454441", 500: "#686560", 400: "#817D77" },
+        accent:  { 50: "#F8EFF2", 100: "#EFDAE1", 600: "#70283E", 700: "#592033" },
         pos:     { 50: "#ECFDF5", 100: "#D1FAE5", 600: "#059669", 700: "#047857" },
         warn:    { 50: "#FFFBEB", 100: "#FEF3C7", 600: "#B45309", 700: "#92400E" },
         exc:     { 50: "#FEF3F2", 100: "#FEE4E2", 600: "#B42318", 700: "#912018" }
       },
       fontFamily: {
-        // Set by next/font in app/layout.js. IBM Plex Sans throughout, with
-        // Plex Mono reserved for figures in the ledger and for reference codes.
-        sans: ["var(--font-plex-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["var(--font-plex-mono)", "ui-monospace", "SFMono-Regular", "monospace"]
+        // System fonts keep builds independent of Google Fonts and reduce downloads.
+        sans: ["ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "monospace"]
       },
       borderRadius: { DEFAULT: "6px", md: "6px", lg: "10px", xl: "14px" },
       boxShadow: {

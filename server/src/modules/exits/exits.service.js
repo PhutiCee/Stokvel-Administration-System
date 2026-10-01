@@ -22,8 +22,10 @@ async function calculate(tx, n) {
       : n.policy.period === "calendarYear"
         ? n.notice_date.slice(0, 4) + "-01-01"
         : n.cycle_start_date;
+  const evaluatedOn = n.policy.condition?.evaluateAt === 'notice' ? n.notice_date : todayIso();
+  const facts = !n.policy.condition ? {} : n.policy.condition.evaluateAt === 'notice' ? n.condition_facts : await repo.conditionFacts(tx,n.member_id,evaluatedOn);
   return {
-    ...compute(await repo.totals(tx, n.member_id, start), n.policy),
+    ...compute(await repo.totals(tx, n.member_id, start), n.policy, facts),
     periodStart: start,
     constitutionVersion: n.version,
     source: n.source,
@@ -102,6 +104,7 @@ async function submit(db, input, ctx) {
       today: todayIso(),
       earliest: addDays(todayIso(), k.exit_notice_days),
       mappingId: map.mapping_id,
+      conditionFacts: map.policy.condition?.evaluateAt === 'notice' ? await repo.conditionFacts(tx,own.member_id,todayIso()) : null,
       userId: ctx.actor.userId,
     });
     const n = await repo.notice(tx, notice_id);
@@ -162,10 +165,7 @@ async function decide(db, id, input, ctx) {
         "A current Treasurer must prepare the settlement before a different Chairperson approves.",
       );
     const calc = await calculate(tx, n);
-    if (
-      JSON.stringify(calc) !== JSON.stringify(a.calculation) &&
-      Object.keys(calc).some((k) => calc[k] !== a.calculation[k])
-    )
+    if (!require('node:util').isDeepStrictEqual(calc,a.calculation))
       throw new RuleRefusal(
         "Financial inputs changed. Ask the Treasurer to refresh the assessment.",
       );
@@ -254,6 +254,7 @@ async function decide(db, id, input, ctx) {
           amount: toNumeric(-toCents(calc.repayable)),
           description: `Exit repayment to ${m.full_name}`,
           reference: payoutId,
+          payoutId,
           postedBy: ctx.actor.userId,
         })
       ).entryId;

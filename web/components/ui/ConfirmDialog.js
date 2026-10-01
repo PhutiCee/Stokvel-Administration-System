@@ -10,7 +10,7 @@
  * rather than five slightly different copies of it.
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { Textarea, Field } from "@/components/ui/Input";
@@ -31,6 +31,30 @@ export default function ConfirmDialog({
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const dialog = useRef(null);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement;
+    const root = dialog.current;
+    const focusable = () => [...root.querySelectorAll('button:not(:disabled), textarea, input, select, a[href]')];
+    focusable()[0]?.focus();
+    const handleKey = (event) => {
+      if (event.key === 'Escape' && !busyRef.current) { event.preventDefault(); closeRef.current(); }
+      if (event.key === 'Tab') {
+        const items = focusable();
+        const first = items[0], last = items.at(-1);
+        if (!items.length) { event.preventDefault(); root.focus(); }
+        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    root.addEventListener('keydown', handleKey);
+    return () => { root.removeEventListener('keydown', handleKey); previous?.focus(); };
+  }, []);
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -46,11 +70,13 @@ export default function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-navy-950/40 p-5"
+      ref={dialog}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
-      <Card className="w-full max-w-md p-5 shadow-pop animate-slideUp">
+      <Card className="w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 shadow-pop animate-slideUp">
         <h2 className="text-sm font-semibold text-ink-900">{title}</h2>
         {description && <p className="mt-1.5 text-[13px] text-ink-500 leading-relaxed">{description}</p>}
 
