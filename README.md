@@ -344,4 +344,4 @@ it covers migrations 021–024, existing migration conflicts, verified behavior 
 remaining accounting/teammate boundaries. Apply with `npm ci` and `npm run migrate`;
 do not reset or reseed your existing database. Run `npm run test:integration` for the
 six isolated database suites and `npm run test:browser` for real browser flows after
-the Playwright setup described in the handoff.
+the Playwright setup described in the handoff
