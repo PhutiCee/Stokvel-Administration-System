@@ -73,7 +73,7 @@ async function getMember(db, memberId) {
  */
 async function findAccountByIdOrPhone(idNumber, phone, client = pool) {
   const { rows } = await client.query(
-    `SELECT user_id, full_name, phone, email, id_number, postal_address
+    `SELECT user_id, full_name, phone, email, id_number, postal_address, is_platform_admin, is_system
            FROM user_account
           WHERE ($1::text IS NOT NULL AND id_number = $1)
              OR ($2::text IS NOT NULL AND phone = $2)

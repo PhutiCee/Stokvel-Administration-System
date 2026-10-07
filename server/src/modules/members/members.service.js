@@ -23,7 +23,7 @@ const { temporaryPassword } = require("../../lib/tempPassword");
 const { normalisePhone } = require("../auth/auth.repo");
 const { toCents, toNumeric, format } = require("../../lib/money");
 const { assessRoleCapacity } = require("../../rules/officers");
-const { BadRequest, Conflict, NotFound, RuleRefusal } = require("../../lib/errors");
+const { BadRequest, Conflict, NotFound, RuleRefusal, Forbidden } = require("../../lib/errors");
 
 const ROLES = ["Chairperson", "Treasurer", "Secretary", "Member"];
 const OFFICER_ROLES_REQUIRED = ["Chairperson", "Treasurer"]; // REQ-49
@@ -182,6 +182,17 @@ async function previewCatchUp(db, joinDate) {
  * figure to the new member, and only then confirms. A member should not
  * discover an obligation after they have joined.
  */
+async function lockMembershipSetup(tx, actor) {
+    const club = await tx.one("SELECT status FROM club WHERE club_id=$1 FOR UPDATE", [tx.clubId]);
+    const member = await tx.one(`SELECT role FROM member WHERE club_id=$1 AND user_id=$2
+      AND standing NOT IN ('Exited','Expelled')`, [tx.clubId, actor.userId]);
+    if (!member || !['Chairperson','Secretary'].includes(member.role) ||
+        club.status === 'Rejected' || club.status === 'Suspended' ||
+        (club.status === 'Pending approval' && member.role !== 'Chairperson')) {
+        throw new Forbidden("Membership cannot be changed in this club's current status or with your current role.");
+    }
+}
+
 async function registerMember(db, input, { actor, audit, preview = false }) {
     const { errors, phone, valid } = validateRegistration(input);
     if (!valid) {
@@ -213,6 +224,9 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
     const existing = await repo.findAccountByIdOrPhone(input.idNumber, phone);
 
     if (existing) {
+        if (existing.is_platform_admin || existing.is_system) {
+            throw new Forbidden("Platform administrator and system accounts cannot be registered as club members.");
+        }
         // REQ-38.
         const already = await repo.isActiveMemberOfClub(db.clubId, existing.user_id);
         if (already) {
@@ -226,7 +240,7 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
     const catchUp = await previewCatchUp(db, joinDate);
 
     // REQ-42: rotating clubs place a new member at the end of the queue.
-    const queuePosition = club.club_type === "Rotating" ? await repo.nextQueuePosition(db) : null;
+    let queuePosition = club.club_type === "Rotating" ? await repo.nextQueuePosition(db) : null;
 
     if (preview) {
         return {
@@ -245,6 +259,20 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
     // One transaction: the account, the membership and the audit entry either
     // all persist or none do.
     const result = await withClubTransaction(db.clubId, async (tx, client) => {
+        await lockMembershipSetup(tx, actor);
+        // Recheck constraints inside the same lock used by admin review.
+        if (existing && await repo.isActiveMemberOfClub(tx.clubId, existing.user_id, client)) {
+            throw new Conflict("This person is already a member of this club.");
+        }
+        if (role !== "Member") {
+            const capacity = assessRoleCapacity({ role,
+                currentHolders: await repo.countHoldersOfRole(tx, role),
+                activeMemberCount: (await repo.countActiveMembers(tx)) + 1 });
+            if (!capacity.eligible) throw new RuleRefusal(capacity.refusals[0].message);
+        }
+        const currentCatchUp = await previewCatchUp(tx, joinDate);
+        if (currentCatchUp.amount !== catchUp.amount) throw new Conflict("The contribution cycle changed. Preview this membership again.");
+        queuePosition = club.club_type === "Rotating" ? await repo.nextQueuePosition(tx) : null;
         let userId = existing?.user_id;
         let tempPassword = null;
 
@@ -309,7 +337,14 @@ async function registerMember(db, input, { actor, audit, preview = false }) {
 // assignRole() — REQ-7, REQ-43, REQ-49
 // ---------------------------------------------------------------------------
 
-async function assignRole(db, memberId, newRole, { actor, audit }) {
+async function assignRole(db, memberId, newRole, options) {
+    return withClubTransaction(db.clubId, async tx => {
+        await lockMembershipSetup(tx, options.actor);
+        return assignRoleLocked(tx, memberId, newRole, options);
+    });
+}
+
+async function assignRoleLocked(db, memberId, newRole, { actor, audit }) {
     if (!ROLES.includes(newRole)) {
         throw new BadRequest(`A role must be one of: ${ROLES.join(", ")}.`);
     }

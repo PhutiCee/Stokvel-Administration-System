@@ -245,7 +245,14 @@ export const reconciliation = {
   record: (details) => api.post("/api/reconciliation", details)
 };
 
+export const clubApplications = {
+  eligibility: (opts) => api.get("/api/club-applications/eligibility", opts),
+  create: (details) => api.post("/api/club-applications", details),
+  current: (opts) => api.get("/api/club-applications/current", opts),
+};
+
 export const platform = {
+  reviewClub: (clubId, decision, reason) => api.post(`/api/platform/clubs/${clubId}/review`, { decision, reason }),
   overview: (opts) => api.get("/api/platform", opts),
   createClub: (details) => api.post("/api/platform/clubs", details),
   suspend: (clubId, reason) =>

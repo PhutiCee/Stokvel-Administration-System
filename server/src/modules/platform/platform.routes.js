@@ -40,6 +40,12 @@ router.post(
   }),
 );
 
+router.post("/clubs/:clubId/review", asyncRoute(async (req, res) => {
+  res.json(await service.reviewClub(req.params.clubId, req.body?.decision, {
+    actor: req.actor, audit: req.audit, reason: req.body?.reason
+  }));
+}));
+
 router.patch(
   "/clubs/:clubId",
   asyncRoute(async (req, res) => {

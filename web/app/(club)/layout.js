@@ -17,19 +17,24 @@
  */
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import ClubShell from "@/components/shell/ClubShell";
 import { Loading } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
 
 export default function ClubLayout({ children }) {
   const router = useRouter();
-  const { status, club } = useSession();
+  const { status, club, role } = useSession();
+  const pathname = usePathname();
+  const awaitingReview = ["Pending approval", "Rejected"].includes(club?.status);
+  const membershipSetup = club?.status === "Pending approval" && role === "Chairperson" && pathname === "/members";
 
   useEffect(() => {
     if (status === "signedOut") router.replace("/login");
     else if (status === "signedIn" && !club) router.replace("/select-club");
-  }, [status, club, router]);
+    else if (status === "signedIn" && awaitingReview && !membershipSetup) router.replace("/club-setup");
+  }, [status, club, router, awaitingReview, membershipSetup]);
 
   if (status === "loading") {
     return (
@@ -47,5 +52,13 @@ export default function ClubLayout({ children }) {
     );
   }
 
+  if (awaitingReview) {
+    if (!membershipSetup) return <Loading label="Opening club setup" />;
+    return <main className="max-w-5xl mx-auto p-5 sm:p-8 space-y-5">
+      <div className="flex gap-5"><Link href="/select-club">My clubs</Link><Link href="/club-setup">Club approval status</Link></div>
+      <p className="p-4 rounded border border-line bg-surface">Waiting for admin approval. Membership setup only.</p>
+      {children}
+    </main>;
+  }
   return <ClubShell>{children}</ClubShell>;
 }

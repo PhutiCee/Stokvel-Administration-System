@@ -49,6 +49,19 @@ function requireClubContext(req, res, next) {
         return next(new Forbidden("You are not a member of this club."));
     }
 
+    if (["Pending approval", "Rejected"].includes(req.actor.clubStatus)) {
+        const setupPath = req.baseUrl === "/api/members" && (
+            (["GET", "HEAD"].includes(req.method) && /^\/(?:[0-9a-f-]+)?\/?$/i.test(req.path)) ||
+            (req.method === "POST" && ["/", "/preview", "/preview/"].includes(req.path)) ||
+            (req.method === "PATCH" && /^\/[0-9a-f-]+\/role\/?$/i.test(req.path))
+        );
+        if (!(req.actor.clubStatus === "Pending approval" && req.actor.role === "Chairperson" && setupPath)) {
+            return next(new Forbidden(req.actor.clubStatus === "Rejected"
+                ? "This club application was rejected. Open Club setup to see the reason."
+                : "Waiting for admin approval. Only the Chairperson can prepare membership; club operations are unavailable."));
+        }
+    }
+
     // REQ-21: a suspended club refuses all WRITE operations, while its members
     // keep read access to their own historical records.
     //

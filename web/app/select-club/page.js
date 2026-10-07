@@ -9,7 +9,7 @@ import {
     Loading,
     StandingBadge,
 } from "@/components/ui/States";
-import { ApiError, auth } from "@/lib/api";
+import { ApiError, auth, clubApplications } from "@/lib/api";
 import { initials, isZeroAmount, money } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { AlertCircle, ChevronRight, Inbox, LogOut } from "lucide-react";
@@ -42,6 +42,13 @@ export default function SelectClubPage() {
   const [clubs, setClubs] = useState(null);
   const [error, setError] = useState(null);
   const [entering, setEntering] = useState(null);
+  const [canCreate, setCanCreate] = useState(false);
+  useEffect(() => {
+    if (status !== "signedIn") return;
+    const controller = new AbortController();
+    clubApplications.eligibility({ signal: controller.signal }).then(d => setCanCreate(d.canCreate)).catch(() => setCanCreate(false));
+    return () => controller.abort();
+  }, [status]);
 
   useEffect(() => {
     if (status === "signedOut") {
@@ -79,7 +86,7 @@ export default function SelectClubPage() {
     try {
       await auth.selectClub(club.clubId);
       await refresh();
-      router.push("/dashboard");
+      router.push(["Pending approval", "Rejected"].includes(club.status) ? "/club-setup" : "/dashboard");
     } catch (err) {
       setError(err.message);
       setEntering(null);
@@ -123,6 +130,7 @@ export default function SelectClubPage() {
               : `You belong to ${clubs.length} clubs. Choose which one to work in.`}
         </p>
 
+        {canCreate && <Button className="mt-5" onClick={() => router.push("/create-club")}>Create a club</Button>}
         {error && (
           <Alert tone="exception" icon={AlertCircle} className="mt-6">
             {error}
@@ -174,6 +182,8 @@ export default function SelectClubPage() {
                           {club.role}
                         </Badge>
                         {suspended && <Badge tone="exception">Suspended</Badge>}
+                        {club.status === "Pending approval" && <Badge tone="neutral">Waiting for admin approval</Badge>}
+                        {club.status === "Rejected" && <Badge tone="exception">Application rejected</Badge>}
                       </span>
 
                       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-500">

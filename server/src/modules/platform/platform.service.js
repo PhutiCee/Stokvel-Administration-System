@@ -28,7 +28,7 @@ const { temporaryPassword } = require("../../lib/tempPassword");
 const { normalisePhone } = require("../auth/auth.repo");
 const { validateConsistency } = require("../../rules/constitution");
 const { toNumeric, toCents } = require("../../lib/money");
-const { BadRequest, Conflict, NotFound } = require("../../lib/errors");
+const { BadRequest, Conflict, NotFound, Forbidden } = require("../../lib/errors");
 
 /**
  * REQ-20: aggregate statistics across all clubs, "without disclosing any
@@ -83,7 +83,7 @@ async function overview() {
 async function listClubs(executor = pool) {
   const { rows } = await executor.query(`
         SELECT c.club_id, c.name, c.short_name, c.club_type, c.status, c.town,
-               c.registration_date,
+               c.registration_date, c.created_at, c.reviewed_at, c.rejection_reason,
                (SELECT count(*)::int FROM member m
                  WHERE m.club_id = c.club_id AND m.standing NOT IN ('Exited','Expelled')) AS member_count
           FROM club c
@@ -97,6 +97,9 @@ async function listClubs(executor = pool) {
     status: c.status,
     town: c.town,
     registrationDate: c.registration_date,
+    requestedAt: c.created_at,
+    reviewedAt: c.reviewed_at,
+    rejectionReason: c.rejection_reason,
     memberCount: c.member_count,
   }));
 }
@@ -111,7 +114,18 @@ async function listClubs(executor = pool) {
  * times, so a club created without one would be born in a state the rules
  * forbid. Creating them together means that state never exists.
  */
-async function createClub(input, { actor, audit }) {
+async function createClub(input, { actor, audit, pendingApproval = false }) {
+  if (pendingApproval) {
+    await requireChairpersonApplicant(actor);
+    const { rows } = await pool.query(
+      "SELECT full_name, phone, id_number, email, postal_address FROM user_account WHERE user_id=$1 AND NOT is_platform_admin AND NOT is_system", [actor.userId]);
+    const account = rows[0];
+    if (!account) throw new Forbidden("A club application needs a member account.");
+    input = { ...input, chairperson: { fullName: account.full_name, phone: account.phone,
+      idNumber: account.id_number, email: account.email, postalAddress: account.postal_address } };
+  } else if (!actor.isPlatformAdmin) {
+    throw new Forbidden("Only the Platform Administrator may provision an active club.");
+  }
   const errors = {};
 
   if (!input.name || input.name.trim().length < 3) {
@@ -168,8 +182,8 @@ async function createClub(input, { actor, audit }) {
     }
 
     const { rows: clubRows } = await client.query(
-      `INSERT INTO club (name, short_name, club_type, town, registration_date)
-             VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE))
+      `INSERT INTO club (name, short_name, club_type, town, registration_date, status, requested_by)
+             VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7)
              RETURNING club_id, name, club_type, status`,
       [
         input.name.trim(),
@@ -177,6 +191,8 @@ async function createClub(input, { actor, audit }) {
         input.clubType,
         input.town?.trim() || null,
         input.registrationDate || null,
+        pendingApproval ? "Pending approval" : "Active",
+        pendingApproval ? actor.userId : null,
       ],
     );
     const club = clubRows[0];
@@ -225,7 +241,7 @@ async function createClub(input, { actor, audit }) {
       [chairPhone, chair.idNumber || null],
     );
 
-    let chairUserId = existing[0]?.user_id;
+    let chairUserId = pendingApproval ? actor.userId : existing[0]?.user_id;
     let tempPassword = null;
 
     if (!chairUserId) {
@@ -261,10 +277,10 @@ async function createClub(input, { actor, audit }) {
 
     await client.query("COMMIT");
 
-    await audit("platform.createClub", "Success", {
+    await audit(pendingApproval ? "club.applicationCreated" : "platform.createClub", "Success", {
       clubId: club.club_id,
       detail:
-        `${actor.fullName} provisioned ${club.name} (${club.club_type}), ` +
+        `${actor.fullName} ${pendingApproval ? "submitted for admin approval" : "provisioned"} ${club.name} (${club.club_type}), ` +
         `chairperson ${chair.fullName}` +
         (existing[0] ? " (existing account reused)" : " (new account created)"),
       targetType: "club",
@@ -294,13 +310,14 @@ async function createClub(input, { actor, audit }) {
 
 /** REQ-18, REQ-21. */
 async function setClubStatus(clubId, status, { actor, audit, reason }) {
+  if (!actor.isPlatformAdmin) throw new Forbidden("Only the Platform Administrator may change club status.");
   const { rows } = await pool.query(
     `UPDATE club SET status = $2, updated_at = now()
-          WHERE club_id = $1
+          WHERE club_id = $1 AND status = $3
           RETURNING club_id, name, status`,
-    [clubId, status],
+    [clubId, status, status === "Active" ? "Suspended" : "Active"],
   );
-  if (!rows[0]) throw new NotFound("That club was not found.");
+  if (!rows[0]) throw new Conflict("This status change is no longer available. Pending clubs must go through admin review.");
 
   await audit(
     status === "Suspended" ? "platform.suspendClub" : "platform.reinstateClub",
@@ -325,7 +342,49 @@ async function setClubStatus(clubId, status, { actor, audit, reason }) {
 const suspendClub = (clubId, opts) => setClubStatus(clubId, "Suspended", opts);
 const reinstateClub = (clubId, opts) => setClubStatus(clubId, "Active", opts);
 
+/** Eligibility is account-scoped: selecting a different club cannot grant this right. */
+async function requireChairpersonApplicant(actor) {
+  if (!actor || actor.isPlatformAdmin) throw new Forbidden("Only an existing club Chairperson may submit an application here.");
+  const { rows } = await pool.query(`SELECT 1 FROM member m JOIN club c ON c.club_id=m.club_id
+    WHERE m.user_id=$1 AND m.role='Chairperson' AND m.standing NOT IN ('Exited','Expelled','Suspended')
+      AND c.status='Active' LIMIT 1`, [actor.userId]);
+  if (!rows.length) throw new Forbidden("You must be a Chairperson of an active club to create a club application.");
+}
+
+async function reviewClub(clubId, decision, { actor, audit, reason }) {
+  if (!actor.isPlatformAdmin) throw new Forbidden("Only the Platform Administrator may review a club.");
+  if (!["approve", "reject"].includes(decision)) throw new BadRequest("Choose approve or reject.");
+  const rejectionReason = typeof reason === "string" ? reason.trim() : "";
+  if (decision === "reject" && (rejectionReason.length < 3 || rejectionReason.length > 2000)) {
+    throw new BadRequest("Give a rejection reason between 3 and 2000 characters.");
+  }
+  const result = await require("../../db/tx").withTransaction(async (client) => {
+    const { rows } = await client.query("SELECT * FROM club WHERE club_id=$1 FOR UPDATE", [clubId]);
+    const club = rows[0];
+    if (!club) throw new NotFound("That club was not found.");
+    if (club.status !== "Pending approval") throw new Conflict("Only a club waiting for approval can be reviewed. Refresh the list.");
+    if (decision === "approve") {
+      const officers = await client.query(`SELECT role FROM member WHERE club_id=$1
+        AND role IN ('Chairperson','Treasurer') AND standing NOT IN ('Exited','Expelled','Suspended')`, [clubId]);
+      if (!["Chairperson", "Treasurer"].every(role => officers.rows.some(m => m.role === role))) {
+        throw new Conflict("The Chairperson must appoint a Treasurer before the club can be approved (REQ-49).");
+      }
+    }
+    const status = decision === "approve" ? "Active" : "Rejected";
+    await client.query(`UPDATE club SET status=$2, reviewed_by=$3, reviewed_at=now(), rejection_reason=$4,
+      updated_at=now() WHERE club_id=$1`, [clubId, status, actor.userId, decision === "reject" ? rejectionReason : null]);
+    // Store the approval audit in the same transaction as activation.
+    await client.query(`INSERT INTO audit_log(club_id,user_id,action,outcome,detail,target_type,target_id)
+      VALUES($1,$2,$3,'Success',$4,'club',$1)`, [clubId, actor.userId, `platform.${decision}Club`,
+      `${actor.fullName} ${decision === "approve" ? "approved" : "rejected"} ${club.name}` + (decision === "reject" ? `: ${rejectionReason}` : "")]);
+    return { clubId, name: club.name, status };
+  });
+  return result;
+}
+
 module.exports = {
+  requireChairpersonApplicant,
+  reviewClub,
   overview,
   aggregate,
   listClubs,

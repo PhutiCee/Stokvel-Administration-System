@@ -7,6 +7,7 @@ for (const file of [
   "completion",
   "review-fixes",
   "final-workflows",
+  "club-approval",
   "exit-writeoffs",
   "governance",
   "screens",
