@@ -97,9 +97,10 @@ async function authenticate({ identifier, password, ipAddress, userAgent, audit 
         throw new Unauthorised(GENERIC_FAILURE);
     }
 
-    await repo.clearFailedAttempts(account.user_id);
-
-    const session = await establishSession({ userId: account.user_id, ipAddress, userAgent });
+    const session = await establishSession({
+        userId: account.user_id, ipAddress, userAgent,
+        expectedPasswordHash: account.password_hash
+    });
 
     await audit?.("auth.login", "Success", {
         userId: account.user_id,
@@ -125,13 +126,15 @@ async function authenticate({ identifier, password, ipAddress, userAgent, audit 
  * The token returned here is the only time the plaintext token exists. The
  * database holds its SHA-256 digest.
  */
-async function establishSession({ userId, ipAddress = null, userAgent = null }) {
+async function establishSession({ userId, ipAddress = null, userAgent = null, expectedPasswordHash }) {
     const token = mintToken();
     const expiresAt = new Date(Date.now() + env.SESSION_IDLE_MINUTES * 60_000);
 
     const row = await repo.createSession({
-        userId, tokenHash: hashToken(token), expiresAt, ipAddress, userAgent
+        userId, tokenHash: hashToken(token), expiresAt, ipAddress, userAgent,
+        expectedPasswordHash
     });
+    if (!row) throw new Unauthorised(GENERIC_FAILURE);
 
     return { sessionId: row.session_id, issuedAt: row.issued_at, expiresAt: row.expires_at, token };
 }

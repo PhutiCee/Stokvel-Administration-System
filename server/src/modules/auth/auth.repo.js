@@ -98,14 +98,36 @@ async function createSession({
   expiresAt,
   ipAddress,
   userAgent,
+  expectedPasswordHash,
 }) {
-  const { rows } = await pool.query(
-    `INSERT INTO session (user_id, token_hash, expires_at, ip_address, user_agent)
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Serialize session creation with password resets. A sign-in that verified
+    // the old password before a reset must not create a session afterwards.
+    const account = await client.query(
+      "SELECT password_hash FROM user_account WHERE user_id=$1 FOR UPDATE", [userId]);
+    if (!account.rows[0] || (expectedPasswordHash !== undefined &&
+        account.rows[0].password_hash !== expectedPasswordHash)) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const { rows } = await client.query(
+      `INSERT INTO session (user_id, token_hash, expires_at, ip_address, user_agent)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING session_id, issued_at, expires_at`,
-    [userId, tokenHash, expiresAt, ipAddress, userAgent],
-  );
-  return rows[0];
+      [userId, tokenHash, expiresAt, ipAddress, userAgent],
+    );
+    await client.query(
+      "UPDATE user_account SET failed_attempts=0,locked_until=NULL,last_login_at=now(),updated_at=now() WHERE user_id=$1", [userId]);
+    await client.query("COMMIT");
+    return rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**

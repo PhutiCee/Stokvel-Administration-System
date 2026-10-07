@@ -20,12 +20,39 @@ const { env } = require("../../config/env");
 const { requireSession } = require("../../middleware/authenticate");
 const { asyncRoute } = require("../../middleware/errors");
 const { MATRIX } = require("../../rules/permissions");
+const { TooManyAttempts } = require("../../lib/errors");
 
 const router = express.Router();
 const registration = require("./registration");
+const passwordRecovery = require("./password-recovery.service");
+const recoveryRequests = new Map();
+function limitRecoveryRequests(req, res, next) {
+    const now = Date.now();
+    for (const [ip, entry] of recoveryRequests) if (entry.expiresAt <= now) recoveryRequests.delete(ip);
+    res.set("Cache-Control", "no-store");
+    const key = `${req.path}:${req.ip || "unknown"}`;
+    const entry = recoveryRequests.get(key) || { count: 0, expiresAt: now + 15 * 60_000 };
+    if (++entry.count > 10) {
+        res.set("Retry-After", String(Math.ceil((entry.expiresAt - now) / 1000)));
+        return next(new TooManyAttempts("Too many reset attempts. Wait 15 minutes and try again."));
+    }
+    recoveryRequests.set(key, entry);
+    next();
+}
 router.post("/register", registration.limitRegistration, asyncRoute(async (req, res) => {
     if (req.actor) throw new (require("../../lib/errors").BadRequest)("You are already signed in. Continue to club registration.");
     res.status(201).json(await registration.register(req.body || {}));
+}));
+router.post("/forgot-password", limitRecoveryRequests, asyncRoute(async (req, res) => {
+    const result = await passwordRecovery.requestPasswordReset(req.body?.identifier, {
+        ipAddress: req.ip || null,
+    });
+    res.status(202).json(result);
+}));
+router.post("/reset-password", limitRecoveryRequests, asyncRoute(async (req, res) => {
+    const result = await passwordRecovery.resetPassword(req.body?.token, req.body?.password);
+    res.clearCookie(env.SESSION_COOKIE_NAME, { path: "/" });
+    res.json(result);
 }));
 
 /**

@@ -9,26 +9,28 @@
  */
 
 class AppError extends Error {
-    constructor(status, code, message, detail) {
-        super(message);
-        this.name = this.constructor.name;
-        this.status = status;
-        this.code = code;
-        this.detail = detail;
-        Error.captureStackTrace?.(this, this.constructor);
-    }
+  constructor(status, code, message, detail) {
+    super(message);
+    this.name = this.constructor.name;
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+    Error.captureStackTrace?.(this, this.constructor);
+  }
 }
 
 /** 400 — the request itself is malformed or incomplete. */
 class BadRequest extends AppError {
-    constructor(message, detail) { super(400, "BAD_REQUEST", message, detail); }
+  constructor(message, detail) {
+    super(400, "BAD_REQUEST", message, detail);
+  }
 }
 
 /** 401 — not signed in, or the session has expired. */
 class Unauthorised extends AppError {
-    constructor(message = "You are not signed in.", detail) {
-        super(401, "UNAUTHORISED", message, detail);
-    }
+  constructor(message = "You are not signed in.", detail) {
+    super(401, "UNAUTHORISED", message, detail);
+  }
 }
 
 /**
@@ -36,9 +38,12 @@ class Unauthorised extends AppError {
  * The refusal is recorded in the audit log by the authorize middleware.
  */
 class Forbidden extends AppError {
-    constructor(message = "This operation is not permitted for your role.", detail) {
-        super(403, "FORBIDDEN", message, detail);
-    }
+  constructor(
+    message = "This operation is not permitted for your role.",
+    detail,
+  ) {
+    super(403, "FORBIDDEN", message, detail);
+  }
 }
 
 /**
@@ -50,14 +55,16 @@ class Forbidden extends AppError {
  * requirement exists to prevent.
  */
 class NotFound extends AppError {
-    constructor(message = "Not found.", detail) {
-        super(404, "NOT_FOUND", message, detail);
-    }
+  constructor(message = "Not found.", detail) {
+    super(404, "NOT_FOUND", message, detail);
+  }
 }
 
 /** 409 — the request is well-formed but conflicts with the current state. */
 class Conflict extends AppError {
-    constructor(message, detail) { super(409, "CONFLICT", message, detail); }
+  constructor(message, detail) {
+    super(409, "CONFLICT", message, detail);
+  }
 }
 
 /**
@@ -66,15 +73,33 @@ class Conflict extends AppError {
  * the member WHY, rather than a bare failure.
  */
 class RuleRefusal extends AppError {
-    constructor(message, detail) { super(422, "RULE_REFUSAL", message, detail); }
+  constructor(message, detail) {
+    super(422, "RULE_REFUSAL", message, detail);
+  }
 }
 
 /** 429 — account locked after repeated failures (REQ-6). */
 class TooManyAttempts extends AppError {
-    constructor(message, detail) { super(429, "TOO_MANY_ATTEMPTS", message, detail); }
+  constructor(message, detail) {
+    super(429, "TOO_MANY_ATTEMPTS", message, detail);
+  }
+}
+
+/** 503 — a required external service is not configured or unavailable. */
+class ServiceUnavailable extends AppError {
+  constructor(message, detail) {
+    super(503, "SERVICE_UNAVAILABLE", message, detail);
+  }
 }
 
 module.exports = {
-    AppError, BadRequest, Unauthorised, Forbidden,
-    NotFound, Conflict, RuleRefusal, TooManyAttempts
+  AppError,
+  BadRequest,
+  Unauthorised,
+  Forbidden,
+  NotFound,
+  Conflict,
+  RuleRefusal,
+  TooManyAttempts,
+  ServiceUnavailable,
 };

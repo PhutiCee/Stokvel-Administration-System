@@ -70,6 +70,22 @@ for; transaction mode silently breaks prepared statements.
 
 If your database password contains `@ : / ?`, percent-encode it.
 
+To enable **Forgot password**, add a Brevo API key and a verified sender to
+`server/.env`:
+
+```dotenv
+BREVO_API_KEY=your_brevo_api_key
+MAIL_FROM=your_verified_sender@gmail.com
+MAIL_FROM_NAME=Stokvel Ledger
+WEB_ORIGIN=http://localhost:3000
+```
+
+In production, set `WEB_ORIGIN` to the public web-app URL. Accounts without a
+registered email must ask their club secretary to update their contact details
+or help them regain access. Password reset links expire after 30 minutes and
+work once. The server stores only a hash of each link and signs out existing
+sessions after a successful reset.
+
 ### 3. Configure the web application
 
 ```bash
@@ -84,6 +100,9 @@ The default (`http://localhost:4000`) is correct for local development.
 npm run migrate
 npm run seed
 ```
+
+The password recovery table is added by migration `032_password_recovery.sql`;
+the normal migration command applies it without resetting existing data.
 
 ### 5. Run both tiers
 

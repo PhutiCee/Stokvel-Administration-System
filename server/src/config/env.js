@@ -61,6 +61,9 @@ const env = {
     // API and the web app run on different ports, so the origin must be named
     // exactly — a wildcard is not permitted with credentials.
     WEB_ORIGIN: optional("WEB_ORIGIN", "http://localhost:3000"),
+    BREVO_API_KEY: optional("BREVO_API_KEY", null),
+    MAIL_FROM: optional("MAIL_FROM", null),
+    MAIL_FROM_NAME: optional("MAIL_FROM_NAME", "Stokvel Ledger"),
 
     // REQ-4: sessions expire after 30 minutes of inactivity.
     SESSION_IDLE_MINUTES: int("SESSION_IDLE_MINUTES", 30),

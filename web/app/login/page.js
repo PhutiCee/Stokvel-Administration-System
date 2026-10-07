@@ -95,6 +95,10 @@ export default function LoginPage() {
                 />
               </Field>
 
+              <p className="-mt-3 text-right text-sm">
+                <Link href="/forgot-password" className="text-accent-700 underline">Forgot password?</Link>
+              </p>
+
               {error && (
                 <Alert tone="exception" icon={AlertCircle}>
                   {error}
