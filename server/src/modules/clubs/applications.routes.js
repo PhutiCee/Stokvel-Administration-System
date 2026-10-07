@@ -8,7 +8,8 @@ const service = require("../platform/platform.service");
 const router = express.Router();
 router.use(requireSession);
 router.get("/eligibility", asyncRoute(async (req, res) => {
-  try { await service.requireChairpersonApplicant(req.actor); res.json({ canCreate: true }); }
+  try { await service.requireClubApplicant(req.actor); const { rows } = await pool.query("SELECT full_name, phone, email, postal_address, id_number FROM user_account WHERE user_id=$1", [req.actor.userId]);
+    const a = rows[0]; res.json({ canCreate: true, applicant: { fullName:a.full_name, phone:a.phone, email:a.email, postalAddress:a.postal_address, idNumber:a.id_number } }); }
   catch (err) { if (!(err instanceof Forbidden)) throw err; res.json({ canCreate: false }); }
 }));
 router.post("/", asyncRoute(async (req, res) => {

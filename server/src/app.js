@@ -86,6 +86,7 @@ function createApp() {
 
   // 6. Feature routes. Others are mounted here as each step lands.
   app.use("/api/auth", authRoutes);
+  app.use("/api/club-applications", require("./modules/clubs/applications.routes"));
   app.use("/api/club", clubRoutes);
   app.use("/api/constitution", constitutionRoutes);
   app.use("/api/payouts", payoutRoutes);

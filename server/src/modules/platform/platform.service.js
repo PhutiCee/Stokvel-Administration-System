@@ -115,14 +115,11 @@ async function listClubs(executor = pool) {
  * forbid. Creating them together means that state never exists.
  */
 async function createClub(input, { actor, audit, pendingApproval = false }) {
+  let roster = null;
   if (pendingApproval) {
-    await requireChairpersonApplicant(actor);
-    const { rows } = await pool.query(
-      "SELECT full_name, phone, id_number, email, postal_address FROM user_account WHERE user_id=$1 AND NOT is_platform_admin AND NOT is_system", [actor.userId]);
-    const account = rows[0];
-    if (!account) throw new Forbidden("A club application needs a member account.");
-    input = { ...input, chairperson: { fullName: account.full_name, phone: account.phone,
-      idNumber: account.id_number, email: account.email, postalAddress: account.postal_address } };
+    await requireClubApplicant(actor);
+    roster = await require("../clubs/registration").prepareRoster(input, actor);
+    input = { ...input, chairperson: roster.find(p => p.role === "Chairperson") };
   } else if (!actor.isPlatformAdmin) {
     throw new Forbidden("Only the Platform Administrator may provision an active club.");
   }
@@ -233,61 +230,65 @@ async function createClub(input, { actor, audit, pendingApproval = false }) {
       ],
     );
 
-    // The founding chairperson. REQ-39: reuse an existing account if this
-    // person already belongs to another club.
-    const { rows: existing } = await client.query(
-      `SELECT user_id, full_name FROM user_account
-              WHERE phone = $1 OR ($2::text IS NOT NULL AND id_number = $2) LIMIT 1`,
-      [chairPhone, chair.idNumber || null],
-    );
+    let foundingMembers;
+    let existing = [], tempPassword = null, memberRows = [];
+    if (pendingApproval) {
+      foundingMembers = await require("../clubs/registration").insertRoster(client, club, roster, actor);
+      memberRows = [{ member_id: foundingMembers.find(p => p.role === "Chairperson").memberId }];
+    } else {
+      // The founding chairperson. REQ-39: reuse an existing account if this
+      // person already belongs to another club.
+      const { rows: foundAccounts } = await client.query(
+        `SELECT user_id, full_name FROM user_account
+                WHERE phone = $1 OR ($2::text IS NOT NULL AND id_number = $2) LIMIT 1`,
+        [chairPhone, chair.idNumber || null],
+      );
 
-    let chairUserId = pendingApproval ? actor.userId : existing[0]?.user_id;
-    let tempPassword = null;
+      existing = foundAccounts;
+      let chairUserId = existing[0]?.user_id;
 
-    if (!chairUserId) {
-      tempPassword = temporaryPassword();
-      const { rows: created } = await client.query(
-        `INSERT INTO user_account
-                     (full_name, id_number, phone, email, postal_address, password_hash)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 RETURNING user_id`,
+
+      if (!chairUserId) {
+        tempPassword = temporaryPassword();
+        const { rows: created } = await client.query(
+          `INSERT INTO user_account
+                       (full_name, id_number, phone, email, postal_address, password_hash)
+                   VALUES ($1, $2, $3, $4, $5, $6)
+                   RETURNING user_id`,
+          [
+            chair.fullName.trim(),
+            chair.idNumber?.trim() || null,
+            chairPhone,
+            chair.email?.trim() || null,
+            chair.postalAddress?.trim() || null,
+            await hashPassword(tempPassword),
+          ],
+        );
+        chairUserId = created[0].user_id;
+      }
+
+      const { rows: createdMembers } = await client.query(
+        `INSERT INTO member (club_id, user_id, role, join_date, queue_position, registered_by)
+               VALUES ($1, $2, 'Chairperson', CURRENT_DATE, $3, $4)
+               RETURNING member_id`,
         [
-          chair.fullName.trim(),
-          chair.idNumber?.trim() || null,
-          chairPhone,
-          chair.email?.trim() || null,
-          chair.postalAddress?.trim() || null,
-          await hashPassword(tempPassword),
+          club.club_id,
+          chairUserId,
+          input.clubType === "Rotating" ? 1 : null,
+          actor.userId,
         ],
       );
-      chairUserId = created[0].user_id;
+
+      memberRows = createdMembers;
     }
-
-    const { rows: memberRows } = await client.query(
-      `INSERT INTO member (club_id, user_id, role, join_date, queue_position, registered_by)
-             VALUES ($1, $2, 'Chairperson', CURRENT_DATE, $3, $4)
-             RETURNING member_id`,
-      [
-        club.club_id,
-        chairUserId,
-        input.clubType === "Rotating" ? 1 : null,
-        actor.userId,
-      ],
-    );
-
+    await client.query(`INSERT INTO audit_log(club_id,user_id,action,outcome,detail,target_type,target_id)
+      VALUES($1,$2,$3,'Success',$4,'club',$1)`, [club.club_id, actor.userId,
+      pendingApproval ? 'club.applicationCreated' : 'platform.createClub',
+      `${actor.fullName} ${pendingApproval ? 'submitted' : 'provisioned'} ${club.name}`]);
     await client.query("COMMIT");
 
-    await audit(pendingApproval ? "club.applicationCreated" : "platform.createClub", "Success", {
-      clubId: club.club_id,
-      detail:
-        `${actor.fullName} ${pendingApproval ? "submitted for admin approval" : "provisioned"} ${club.name} (${club.club_type}), ` +
-        `chairperson ${chair.fullName}` +
-        (existing[0] ? " (existing account reused)" : " (new account created)"),
-      targetType: "club",
-      targetId: club.club_id,
-    });
-
     return {
+      foundingMembers,
       clubId: club.club_id,
       name: club.name,
       clubType: club.club_type,
@@ -343,12 +344,10 @@ const suspendClub = (clubId, opts) => setClubStatus(clubId, "Suspended", opts);
 const reinstateClub = (clubId, opts) => setClubStatus(clubId, "Active", opts);
 
 /** Eligibility is account-scoped: selecting a different club cannot grant this right. */
-async function requireChairpersonApplicant(actor) {
-  if (!actor || actor.isPlatformAdmin) throw new Forbidden("Only an existing club Chairperson may submit an application here.");
-  const { rows } = await pool.query(`SELECT 1 FROM member m JOIN club c ON c.club_id=m.club_id
-    WHERE m.user_id=$1 AND m.role='Chairperson' AND m.standing NOT IN ('Exited','Expelled','Suspended')
-      AND c.status='Active' LIMIT 1`, [actor.userId]);
-  if (!rows.length) throw new Forbidden("You must be a Chairperson of an active club to create a club application.");
+async function requireClubApplicant(actor) {
+  if (!actor || actor.isPlatformAdmin) throw new Forbidden("Use a personal member account to register a club.");
+  const { rows } = await pool.query("SELECT 1 FROM user_account WHERE user_id=$1 AND NOT is_platform_admin AND NOT is_system", [actor.userId]);
+  if (!rows.length) throw new Forbidden("A personal account is required to register a club.");
 }
 
 async function reviewClub(clubId, decision, { actor, audit, reason }) {
@@ -365,9 +364,9 @@ async function reviewClub(clubId, decision, { actor, audit, reason }) {
     if (club.status !== "Pending approval") throw new Conflict("Only a club waiting for approval can be reviewed. Refresh the list.");
     if (decision === "approve") {
       const officers = await client.query(`SELECT role FROM member WHERE club_id=$1
-        AND role IN ('Chairperson','Treasurer') AND standing NOT IN ('Exited','Expelled','Suspended')`, [clubId]);
-      if (!["Chairperson", "Treasurer"].every(role => officers.rows.some(m => m.role === role))) {
-        throw new Conflict("The Chairperson must appoint a Treasurer before the club can be approved (REQ-49).");
+        AND standing NOT IN ('Exited','Expelled','Suspended')`, [clubId]);
+      if (!["Chairperson", "Treasurer", "Secretary", "Member"].every(role => officers.rows.some(m => m.role === role))) {
+        throw new Conflict("A Chairperson, Treasurer, Secretary and at least one ordinary member are required before approval.");
       }
     }
     const status = decision === "approve" ? "Active" : "Rejected";
@@ -383,7 +382,7 @@ async function reviewClub(clubId, decision, { actor, audit, reason }) {
 }
 
 module.exports = {
-  requireChairpersonApplicant,
+  requireClubApplicant,
   reviewClub,
   overview,
   aggregate,

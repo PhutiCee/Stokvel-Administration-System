@@ -451,7 +451,7 @@ function ReviewClub({ club, onClose, onDone }) {
   return <Card className="p-5 mb-5 space-y-4">
     <h2 className="font-semibold">Review {club.name}</h2>
     <p className="text-sm">{club.clubType} · {club.memberCount} members · {club.town || "Town not supplied"}</p>
-    <p className="text-sm text-ink-500">Approval activates this club. A Chairperson and Treasurer must be appointed first. Club finances and member details remain private.</p>
+    <p className="text-sm text-ink-500">Approval activates this club. A Chairperson, Treasurer, Secretary and at least one ordinary member must be in place. Club finances and member details remain private.</p>
     <Field label="Reason if rejecting" htmlFor="reviewReason">
       <Textarea id="reviewReason" value={reason} onChange={e => setReason(e.target.value)} maxLength={2000} />
     </Field>

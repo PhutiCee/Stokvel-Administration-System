@@ -22,6 +22,11 @@ const { asyncRoute } = require("../../middleware/errors");
 const { MATRIX } = require("../../rules/permissions");
 
 const router = express.Router();
+const registration = require("./registration");
+router.post("/register", registration.limitRegistration, asyncRoute(async (req, res) => {
+    if (req.actor) throw new (require("../../lib/errors").BadRequest)("You are already signed in. Continue to club registration.");
+    res.status(201).json(await registration.register(req.body || {}));
+}));
 
 /**
  * Session cookie.

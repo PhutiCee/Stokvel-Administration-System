@@ -33,10 +33,11 @@ export default function ClubSetupPage() {
       {data.status === "Pending approval" && <>
         <p>Contributions, payouts, voting and other club operations are unavailable until the Platform Administrator approves this club.</p>
         {role === "Chairperson" ? <>
-          <p>You can register the Treasurer, Secretary and ordinary members now. A Treasurer must be appointed before approval.</p>
+          <p>Your founding membership has been submitted. You can review the membership while waiting. All three officer roles and an ordinary member must remain in place for approval.</p>
           <Link href="/members" className="text-accent-700 underline">Prepare membership</Link>
-        </> : <p>Your Chairperson is preparing the club. You can return here to check approval.</p>}
+        </> : <p>Your application is being reviewed. You can return here to check approval.</p>}
       </>}
+      <p>Contact the Platform Administrator with your club name and reference: <span className="break-all font-mono">{data.clubId}</span>.</p>
       {data.status === "Rejected" && <Alert tone="exception">{data.rejectionReason}</Alert>}
       {["Active", "Suspended"].includes(data.status) && <Link href="/dashboard" className="text-accent-700 underline">Open club</Link>}
       <div><Button variant="secondary" onClick={() => load()} disabled={busy}>Refresh approval status</Button></div>

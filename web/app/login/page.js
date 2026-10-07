@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
@@ -9,7 +10,7 @@ import { Alert } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
 import { auth, ApiError } from "@/lib/api";
 
-// Phone-number authentication; account registration remains officer-managed.
+// Sign in or start a new club registration.
 export default function LoginPage() {
   const router = useRouter();
   const { refresh } = useSession();
@@ -106,6 +107,7 @@ export default function LoginPage() {
             </form>
 
         </div>
+        <p className="mt-6 text-center"><Link href="/create-club" className="text-accent-700 underline">Register a club</Link></p>
         <p className="mt-6 text-center text-[14px] text-ink-500">
           Trouble signing in? Ask your club’s secretary.
         </p>

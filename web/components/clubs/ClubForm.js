@@ -6,6 +6,8 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import { Card, Alert } from "@/components/ui/States";
 import { ApiError } from "@/lib/api";
 import { todayIso } from "@/lib/format";
+import FoundingMembers from "./FoundingMembers";
+import { emptyPerson } from "./PersonFields";
 const CLUB_TYPES = ["Rotating", "Accumulating", "Burial"];
 const FREQUENCIES = ["Weekly", "Fortnightly", "Monthly"];
 const ORDER_METHODS = ["Random draw", "Seniority", "Negotiated"];
@@ -37,8 +39,8 @@ const EMPTY = {
   },
 };
 
-export default function ClubForm({ onCancel, onDone, submitClub, selfChairperson = false }) {
-  const [form, setForm] = useState(EMPTY);
+export default function ClubForm({ onCancel, onDone, submitClub, selfChairperson = false, applicant }) {
+  const [form, setForm] = useState(() => ({...EMPTY, applicantRole:'Chairperson', foundingMembers:['Treasurer','Secretary','Member'].map(role => ({...emptyPerson(),role}))}));
   const [fields, setFields] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -347,9 +349,7 @@ export default function ClubForm({ onCancel, onDone, submitClub, selfChairperson
           </div>
         </div>
 
-        {selfChairperson ? <p className="text-sm text-ink-500 border-t border-line pt-4">
-          You will be the founding Chairperson using your existing account. The club will wait for admin approval.
-        </p> : <div className="pt-4 border-t border-line">
+        {selfChairperson ? <FoundingMembers form={form} setForm={setForm} applicant={applicant} /> : <div className="pt-4 border-t border-line">
           <h2 className="text-sm font-semibold text-ink-900">
             The founding chairperson
           </h2>
@@ -428,12 +428,14 @@ export default function ClubForm({ onCancel, onDone, submitClub, selfChairperson
       {error && (
         <Alert tone="exception" icon={AlertCircle} className="mt-4">
           {error}
+          {fields.foundingMembers && <p>{fields.foundingMembers}</p>}
+          {Object.entries(fields).filter(([k]) => k.startsWith('foundingMembers.')).map(([k,v]) => <p key={k}>{v}</p>)}
         </Alert>
       )}
 
       <div className="mt-5 flex gap-3">
         <Button onClick={submit} loading={busy}>
-          {selfChairperson ? "Create club application" : "Provision the club"}
+          {selfChairperson ? "Submit club for admin approval" : "Provision the club"}
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={busy}>
           Cancel

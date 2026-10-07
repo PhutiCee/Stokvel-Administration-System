@@ -163,9 +163,8 @@ export default function HomePage() {
                 <Button as={Link} href="/login" size="lg">
                   Sign in
                 </Button>
-                <p className="text-[13px] text-ink-500">
-                  Your secretary registers you and gives you your details.
-                </p>
+                <Button as={Link} href="/create-club" variant="secondary" size="lg">Register a club</Button>
+                <p className="text-[13px] text-ink-500 w-full">Choose your officers and founding members, then submit for admin approval.</p>
               </div>
             </div>
 

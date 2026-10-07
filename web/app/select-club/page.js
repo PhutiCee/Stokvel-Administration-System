@@ -130,7 +130,7 @@ export default function SelectClubPage() {
               : `You belong to ${clubs.length} clubs. Choose which one to work in.`}
         </p>
 
-        {canCreate && <Button className="mt-5" onClick={() => router.push("/create-club")}>Create a club</Button>}
+        {canCreate && <Button className="mt-5" onClick={() => router.push("/create-club")}>Register a club</Button>}
         {error && (
           <Alert tone="exception" icon={AlertCircle} className="mt-6">
             {error}

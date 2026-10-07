@@ -237,12 +237,12 @@ export const claims = {
 
 export const notifications = {
   list: (opts) => api.get("/api/notifications", opts),
-  send: (details) => api.post("/api/notifications", details)
+  send: (details) => api.post("/api/notifications", details),
 };
 
 export const reconciliation = {
   list: (opts) => api.get("/api/reconciliation", opts),
-  record: (details) => api.post("/api/reconciliation", details)
+  record: (details) => api.post("/api/reconciliation", details),
 };
 
 export const clubApplications = {
@@ -252,7 +252,8 @@ export const clubApplications = {
 };
 
 export const platform = {
-  reviewClub: (clubId, decision, reason) => api.post(`/api/platform/clubs/${clubId}/review`, { decision, reason }),
+  reviewClub: (clubId, decision, reason) =>
+    api.post(`/api/platform/clubs/${clubId}/review`, { decision, reason }),
   overview: (opts) => api.get("/api/platform", opts),
   createClub: (details) => api.post("/api/platform/clubs", details),
   suspend: (clubId, reason) =>
@@ -263,6 +264,7 @@ export const platform = {
 
 // --- Use Case 1 ------------------------------------------------------------
 export const auth = {
+  register: (details) => api.post("/api/auth/register", details),
   login: (identifier, password) =>
     api.post("/api/auth/login", { identifier, password }),
   logout: () => api.post("/api/auth/logout"),
