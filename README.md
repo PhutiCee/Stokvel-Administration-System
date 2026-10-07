@@ -14,11 +14,11 @@ System Design Document.
 
 Three tiers, as described in SDD section 4.
 
-| Tier | Technology | Directory |
-|---|---|---|
-| Presentation | Next.js 14 (App Router), Tailwind CSS | `web/` |
-| Application | Node.js, Express, REST API | `server/` |
-| Data | PostgreSQL 15 (hosted on Supabase) | `server/src/db/` |
+| Tier         | Technology                            | Directory        |
+| ------------ | ------------------------------------- | ---------------- |
+| Presentation | Next.js 14 (App Router), Tailwind CSS | `web/`           |
+| Application  | Node.js, Express, REST API            | `server/`        |
+| Data         | PostgreSQL 15 (hosted on Supabase)    | `server/src/db/` |
 
 The two tiers run as separate processes and talk over HTTP. The web application
 holds no database credentials and performs no data access of its own.
@@ -105,14 +105,14 @@ Every seeded account uses the password in `SEED_PASSWORD` (`stokvel2026` by
 default). The username is the phone number; spaces and a `+27` prefix are
 accepted.
 
-| Phone | Person | Holds |
-|---|---|---|
-| `082 441 7788` | Nomsa Maluleke | Treasurer of Mmakau, **ordinary Member of Bokamoso** |
-| `073 902 1145` | Thabo Mokoena | Chairperson of Mmakau, Member of Lehumo |
-| `071 334 9026` | Refilwe Mahlangu | Secretary of Mmakau |
-| `082 201 5566` | Grace Baloyi | Chairperson of Bokamoso |
-| `082 554 0033` | Solomon Mabunda | Chairperson of Lehumo |
-| `084 210 6690` | Kabelo Netshiozwi | Platform Administrator |
+| Phone          | Person            | Holds                                                |
+| -------------- | ----------------- | ---------------------------------------------------- |
+| `082 441 7788` | Nomsa Maluleke    | Treasurer of Mmakau, **ordinary Member of Bokamoso** |
+| `073 902 1145` | Thabo Mokoena     | Chairperson of Mmakau, Member of Lehumo              |
+| `071 334 9026` | Refilwe Mahlangu  | Secretary of Mmakau                                  |
+| `082 201 5566` | Grace Baloyi      | Chairperson of Bokamoso                              |
+| `082 554 0033` | Solomon Mabunda   | Chairperson of Lehumo                                |
+| `084 210 6690` | Kabelo Netshiozwi | Platform Administrator                               |
 
 **Start with Nomsa.** She holds two different roles in two different clubs on
 one account, which is the tenancy model the whole system is built around.
@@ -136,16 +136,16 @@ These are seeded deliberately so a demonstration can reach them without setup.
 
 Run from the repository root.
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Both tiers |
-| `npm run dev:api` | Express only |
-| `npm run dev:web` | Next.js only |
-| `npm run migrate` | Apply outstanding migrations |
-| `npm run migrate:status` | Show which migrations have run |
-| `npm run seed` | Reload the demonstration data |
-| `npm run db:rebuild` | Drop everything, migrate, reseed (**destructive**) |
-| `npm run build` | Production build of the web application |
+| Command                  | What it does                                       |
+| ------------------------ | -------------------------------------------------- |
+| `npm run dev`            | Both tiers                                         |
+| `npm run dev:api`        | Express only                                       |
+| `npm run dev:web`        | Next.js only                                       |
+| `npm run migrate`        | Apply outstanding migrations                       |
+| `npm run migrate:status` | Show which migrations have run                     |
+| `npm run seed`           | Reload the demonstration data                      |
+| `npm run db:rebuild`     | Drop everything, migrate, reseed (**destructive**) |
+| `npm run build`          | Production build of the web application            |
 
 ---
 
@@ -279,7 +279,6 @@ including legacy data preservation, proposals, threshold enforcement, atomic
 succession, pinned cycle versions and annual reports. It needs no Supabase
 credentials and does not reset shared data. `npm test` runs 254 unit tests.
 
-
 ### Date fixes and ledger reversals (migration 018)
 
 After applying the previous governance and screen updates, apply outstanding
@@ -302,7 +301,6 @@ npm run build
 ```
 
 Integration tests use an isolated engine, not the configured shared database.
-
 
 ### Installing updates on Windows
 
@@ -346,4 +344,4 @@ it covers migrations 021–024, existing migration conflicts, verified behavior 
 remaining accounting/teammate boundaries. Apply with `npm ci` and `npm run migrate`;
 do not reset or reseed your existing database. Run `npm run test:integration` for the
 six isolated database suites and `npm run test:browser` for real browser flows after
-the Playwright setup described in the handoff.
+the Playwright setup described in the handoff
