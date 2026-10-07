@@ -79,8 +79,9 @@ async function get(db, actor) {
         ),
         metric(
           "penaltyReceipts",
-          "Penalty receipts this month",
+          "Penalty assessments less waivers this month (non-cash)",
           current.filter((r) => r.category === "Penalty"),
+          "assessed_amount",
         ),
       );
       const contributions = await repo.contributions(tx, null);

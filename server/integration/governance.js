@@ -634,12 +634,13 @@ async function main() {
     assert.equal(toCents(report.penalties), 10000);
     assert.equal(toCents(report.payouts), 50000);
     assert.equal(toCents(report.other_movements), 5000);
-    assert.equal(toCents(report.closing_balance), 165000);
+    // The R100 assessment is disclosed separately and is not available cash.
+    assert.equal(toCents(report.closing_balance), 155000);
     assert.equal(report.membership.closing, 3);
     assert.equal(report.membership.ended, 2);
     assert.equal(report.reconciliation, null);
     await database.query(
-        "INSERT INTO reconciliation(club_id,as_at_date,bank_balance,ledger_balance,difference,note,recorded_by) VALUES($1,$2,1600,1650,-50,$3,$4)",
+        "INSERT INTO reconciliation(club_id,as_at_date,bank_balance,ledger_balance,difference,note,recorded_by) VALUES($1,$2,1500,1550,-50,$3,$4)",
         [db.clubId, date, "Investigate shortfall", users[4].user_id],
     );
     assert.equal(

@@ -65,6 +65,8 @@ export default function ContributionsPage() {
   const [selected, setSelected] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [opening, setOpening] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+  const [closure, setClosure] = useState(null);
   const [proofFor, setProofFor] = useState(null);
   const [cycleList, setCycleList] = useState([]);
   const [cycleId, setCycleId] = useState("");
@@ -124,6 +126,18 @@ export default function ContributionsPage() {
     return { n, paid, outstanding: n - paid };
   }, [data]);
 
+  async function closeCurrentCycle() {
+    setError(null);
+    try {
+      const result = await cyclesApi.close(data.cycle.cycleId);
+      setClosure(`Cycle ${result.sequenceNumber} closed. ${result.penaltiesLevied} new late penalties assessed. Unpaid debts remain due.`);
+      setCloseConfirm(false);
+      setSelected(null);
+      setReceipt(null);
+      await load();
+    } catch (err) { setError(err.message); throw err; }
+  }
+
   async function openNewCycle() {
     setOpening(true);
     setError(null);
@@ -172,6 +186,7 @@ export default function ContributionsPage() {
     return (
       <>
         <PageHeader title="Contributions" />
+        {closure && <Alert tone="positive">{closure}</Alert>}
         <div className="mb-4">{cycleSelector}</div>
         <Card>
           <Empty
@@ -204,6 +219,10 @@ export default function ContributionsPage() {
 
   return (
     <>
+      {closeConfirm && <ConfirmDialog title={`Close cycle ${cycle.sequenceNumber}?`}
+        requireReason={false} confirmLabel="Close cycle" onConfirm={closeCurrentCycle}
+        onClose={() => setCloseConfirm(false)}
+        description={`Closing stops ordinary capture and assesses each overdue unpaid member's ${money(cycle.penaltyAmount)} penalty once. Unpaid debts remain due. A closed cycle cannot be reopened; correct receipts through Ledger reversals. You can then open the next cycle.`} />}
       <PageHeader
         title={`Cycle ${cycle.sequenceNumber}`}
         description={
@@ -213,9 +232,11 @@ export default function ContributionsPage() {
             : `No grace period — a ${money(cycle.penaltyAmount)} penalty is posted the day after.`)
         }
         action={
-          <Badge tone={cycle.status === "Open" ? "accent" : "neutral"}>
-            {cycle.status}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge tone={cycle.status === "Open" ? "accent" : "neutral"}>{cycle.status}</Badge>
+            {cycle.status === "Open" && can("cycle.close") &&
+              <Button variant="secondary" onClick={() => { setError(null); setCloseConfirm(true); }}>Close cycle</Button>}
+          </div>
         }
       />
 

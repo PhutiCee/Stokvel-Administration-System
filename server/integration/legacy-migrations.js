@@ -1,4 +1,6 @@
 "use strict";
+process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1/isolated_legacy";
+process.env.DATABASE_SSL = "false";
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");

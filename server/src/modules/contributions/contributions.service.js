@@ -168,6 +168,55 @@ async function openCycle(db, { startDate, dueDate }, { actor, audit }) {
   };
 }
 
+// Closure sweeps every bill, including members who never made a payment.
+async function closeCycle(db, cycleId, { actor, audit }) {
+  try {
+    const result = await withClubTransaction(db.clubId, async (tx) => {
+      await repo.lockClub(tx);
+      const cycle = await repo.getCycle(tx, cycleId);
+      if (!cycle) throw new NotFound("That cycle was not found in this club.");
+      if (cycle.status !== "Open") throw new Conflict("This cycle is already closed.");
+      const constitution = await repo.constitutionForCycle(tx, cycleId);
+      const graceDays = constitution.grace_period_days;
+      const rows = await repo.listForCycle(tx, cycleId);
+      const outstanding = rows.some(r => toCents(r.captured_amount) + toCents(r.written_off_amount || '0') < toCents(r.expected_amount));
+      if (outstanding && todayIso() < addDays(cycle.due_date, Number(graceDays) + 1))
+        throw new RuleRefusal("Unpaid contributions still have time to be received. Close this cycle after its due date and grace period, or after every obligation is paid or written off.");
+      let penaltiesLevied = 0;
+      for (const row of rows) {
+        const expected = toNumeric(Math.max(0, toCents(row.expected_amount) - toCents(row.written_off_amount || '0')));
+        const status = resolveStatus({expected,captured:row.captured_amount,dueDate:cycle.due_date,graceDays});
+        await repo.setStatus(tx, row.contribution_id, status);
+        if (penaltyIsDue(status) && !['Exited','Expelled'].includes(row.standing) && toCents(row.written_off_amount || '0') === 0) {
+          const penalty = await levyLatePenalty(tx, { ...row, cycle_id:cycleId, sequence_number:cycle.sequence_number }, constitution.penalty_amount, actor);
+          if (penalty) penaltiesLevied++;
+        }
+      }
+      const closed = await repo.closeCycle(tx,cycleId,actor.userId);
+      return {cycleId,sequenceNumber:closed.sequence_number,status:'Closed',closedAt:closed.closed_at,penaltiesLevied};
+    });
+    await audit('cycle.close','Success',{targetType:'cycle',targetId:cycleId,detail:`${actor.fullName} closed cycle ${result.sequenceNumber}; ${result.penaltiesLevied} late penalties assessed. Unpaid debts remain due.`});
+    return result;
+  } catch (err) {
+    if (err.status) await audit('cycle.close','Refused',{targetType:'cycle',targetId:cycleId,detail:err.message});
+    throw err;
+  }
+}
+
+async function levyLatePenalty(tx, contribution, amount, actor) {
+  if (toCents(amount || '0') <= 0) return null;
+  const penalty = await repo.levyPenalty(tx, {
+    memberId:contribution.member_id,cycleId:contribution.cycle_id,amount,
+    reason:`Late contribution, cycle ${contribution.sequence_number}`,
+  });
+  if (penalty) await ledger.appendEntry(tx, {
+    clubId:tx.clubId,memberId:contribution.member_id,entryType:'Penalty',amount,
+    description:`Late penalty assessment, cycle ${contribution.sequence_number} — ${contribution.full_name}`,
+    penaltyId:penalty.penalty_id,postedBy:actor.userId,
+  });
+  return penalty;
+}
+
 // ---------------------------------------------------------------------------
 // applyExcess() — REQ-57
 // ---------------------------------------------------------------------------
@@ -370,6 +419,9 @@ async function captureContribution(
       throw new RuleRefusal(
         "The contribution or membership changed. Reload before capturing payment.",
       );
+    // Assess before allocating excess, so this receipt can settle today's penalty.
+    const penalty = penaltyIsDue(statusBefore)
+      ? await levyLatePenalty(tx, existing, toNumeric(penaltyCents), actor) : null;
     const newCapturedCents = alreadyCents + appliedCents;
 
     const status = resolveStatus({
@@ -415,34 +467,6 @@ async function captureContribution(
       {type: "contribution", id: contributionId, amount: toNumeric(appliedCents)}, ...excess.allocations,
     ]);
 
-    // REQ-56, posted once only. The unique index from migration 009 makes a
-    // repeat impossible even when two captures race.
-    //
-    // A member who never pays at all is not reached here, because nothing
-    // triggers a capture for them. Their penalty is levied when the cycle
-    // closes — closeCycle() sweeps the unpaid and is scheduled for the next
-    // sprint. Until then their status still READS as Late everywhere,
-    // because it is recomputed on every read.
-    let penalty = null;
-    if (penaltyIsDue(statusBefore) && penaltyCents > 0) {
-      penalty = await repo.levyPenalty(tx, {
-        memberId: existing.member_id,
-        cycleId: existing.cycle_id,
-        amount: toNumeric(penaltyCents),
-        reason: `Late contribution, cycle ${existing.sequence_number}`,
-      });
-      if (penalty) {
-        await ledger.appendEntry(client, {
-          clubId: tx.clubId,
-          memberId: existing.member_id,
-          entryType: "Penalty",
-          amount: toNumeric(penaltyCents),
-          description: `Late penalty, cycle ${existing.sequence_number} — ${existing.full_name}`,
-          penaltyId: penalty.penalty_id,
-          postedBy: actor.userId,
-        });
-      }
-    }
 
     return { status, newCapturedCents, entry, excess, penalty };
   });
@@ -604,6 +628,7 @@ async function listPenalties(db, query, { actor }) {
 
 async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
   const outcome = await withClubTransaction(db.clubId, async (tx, client) => {
+    await repo.lockClub(tx);
     const penalty = await repo.getPenalty(tx, penaltyId);
     if (!penalty) return { notFound: true };
 
@@ -805,6 +830,7 @@ async function deleteProof(db, contributionId, { actor, audit }) {
 
 module.exports = {
   openCycle,
+  closeCycle,
   captureContribution,
   applyExcess,
   listCycles,

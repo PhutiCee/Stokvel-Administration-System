@@ -18,7 +18,7 @@ import { AlertCircle, Printer, BookOpen } from "lucide-react";
 import { PageHeader } from "@/components/shell/ClubShell";
 import Button from "@/components/ui/Button";
 import { Card, Badge, StandingBadge, Alert, Loading, Empty } from "@/components/ui/States";
-import { ledger as api, ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { money, isZeroAmount, isNegativeAmount, fmtDate, fmtDateTime, cx } from "@/lib/format";
 
 const TYPE_TONE = {
@@ -37,7 +37,7 @@ export default function StatementPage() {
   useEffect(() => {
     const c = new AbortController();
     api
-      .statement(null, { signal: c.signal })
+      .get("/api/ledger/statement", { signal: c.signal })
       .then(setData)
       .catch((err) => {
         if (err.name === "AbortError") return;
@@ -59,7 +59,7 @@ export default function StatementPage() {
       <div className="no-print">
         <PageHeader
           title="My statement"
-          description="Every contribution, penalty and payout against your name, oldest first."
+          description="Every contribution, penalty and payout, oldest first. Running totals show cash movements; penalty assessments and waivers do not move cash."
           action={
             <Button variant="secondary" onClick={() => window.print()}>
               <Printer size={15} aria-hidden />
@@ -174,6 +174,7 @@ export default function StatementPage() {
                       )}
                     >
                       {money(l.amount, { sign: true })}
+                      {l.cashAmount != null && l.cashAmount !== l.amount && <span className="block text-xs text-ink-500">Cash change: {money(l.cashAmount)}</span>}
                     </td>
                     <td className="px-5 py-2.5 text-right font-mono tnum text-ink-500 whitespace-nowrap">
                       {money(l.runningTotal)}

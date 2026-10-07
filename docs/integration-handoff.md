@@ -94,8 +94,8 @@ physical-device acceptance, nor browser coverage of every governance/exit/claim 
    notification event dispatch/preferences/retries/providers, full reconciliation
    exception resolution, batch capture, exports and authentication extensions are not
    made complete by merging their current branches. Merge any later commits separately.
-5. **GitHub delivery is pending access.** Changes are committed locally and packaged;
-   they were not pushed to the remote branch. GitHub authentication was unavailable.
+5. **Delivery status.** The reviewed integration is present on racha dde4e0a.
+   The subsequent review fixes are delivered separately and have not been pushed.
 
 Decisions 45–46 in `Docs/Desicions.md` and the current updates in
 `docs/remaining-work.md` / `docs/traceability.md` supersede older gap descriptions.
@@ -110,3 +110,18 @@ An earlier package did not adopt teammates' already-applied migrations after ren
 schemas are recorded without recreating their tables. Migration 024 then runs normally.
 The regression test `node server/integration/legacy-migrations.js` exercises the real
 runner with retained notification data, old filenames, mismatch refusal and repeat runs.
+
+
+## Review-fix delivery
+
+Apply all files from the review-fixes manifest and migration 025 together. Do not
+copy only contributions.service.js or assistant.routes.js: their cash queries and
+cycle closure depend on the supplied repository, route, migration and UI changes.
+Migration 025 preserves historical entries and recorded reconciliation snapshots.
+New pool calculations exclude non-cash penalty assessments and waivers.
+
+The runner now includes eight isolated suites (including legacy-migrations and
+review-fixes). The standalone legacy suite supplies an unused test database URL,
+so it needs no real credentials. The browser flow closes a cycle through the UI.
+Next migration number is 026. Standing scheduling/configuration is unchanged.
+See decision 47 and the current remaining-work inventory before claiming completion.

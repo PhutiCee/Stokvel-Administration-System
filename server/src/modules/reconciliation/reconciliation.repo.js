@@ -19,7 +19,7 @@ function presentReconciliation(r) {
 
 async function ledgerBalance(db,date=null) {
     const row = await db.one(
-        "SELECT COALESCE(sum(amount), 0) AS balance FROM ledger_entry WHERE club_id = $1 AND ($2::date IS NULL OR posted_at < (($2::date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg'))",
+        "SELECT COALESCE(sum(cash_amount), 0) AS balance FROM cash_ledger_entry WHERE club_id = $1 AND ($2::date IS NULL OR posted_at < (($2::date + 1)::timestamp AT TIME ZONE 'Africa/Johannesburg'))",
         [db.clubId,date]
     );
     return row.balance;

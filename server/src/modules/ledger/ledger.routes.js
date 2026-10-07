@@ -47,6 +47,8 @@ router.get("/", authorize("view.ledger"), asyncRoute(async (req, res) => {
             entryType: e.entry_type,
             amount: e.amount,
             resultingBalance: e.resulting_balance,
+            recordedBalance: e.recorded_balance,
+            cashAmount: e.cash_amount,
             description: e.description,
             reference: e.reference,
             reversesId: e.reverses_id,

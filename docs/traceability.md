@@ -228,12 +228,12 @@ readable but cannot be newly applied. No shared database was migrated for testin
 | REQ-90/91 | Original immutable; equal/opposite reversal with reference and reason; one reversal per original | Migration 018; ledger-reversals integration, including database guards |
 | REQ-92 | Treasurer posts; payout request → Chairperson approval → Treasurer posting | Actual HTTP role/tenant/approval tests; decision 42 records REQ-63 exception |
 
-A ledger correction does not cancel/replay the underlying business process or
-recalculate captured allocations. See decision 42 for the operational boundary.
+Decision 45 supersedes the original ledger-only boundary: tracked receipt allocations,
+rotation queues and claims are compensated. Compound/legacy limits remain explicit.
 
 ---
 
-## Not yet implemented
+## Historical gap inventory (superseded by current inventory)
 
 Scheduled for the sprints after the preliminary release. The full, task-by-task list with sizes and suggested order is in `docs/remaining-work.md`.
 
@@ -328,3 +328,19 @@ sum-to-detail equality and access boundaries. See decision 44 for limits and han
 | Confirmations/navigation | Real browser capture/reversal/recapture and rotation initiation/approval/reversal flow, mobile menu and member role checks in `test:browser`. Not exhaustive device acceptance. |
 
 See `docs/integration-handoff.md` for reproducible commands and exact merged heads.
+
+
+### Review fixes — 1 October 2026, migration 025
+
+The current remaining-work inventory supersedes older status paragraphs above.
+
+| Requirement / defect | Implementation | Evidence |
+|---|---|---|
+| Cycle lifecycle / REQ-59 | Treasurer closes via API/UI; grace protection, closure attribution, no reopening; debts preserved | review-fixes integration; browser flow |
+| REQ-54–57 | Once-only late penalties on capture/close; excess can settle a newly assessed penalty | review-fixes; unattended grace-expiry scheduler remains outstanding |
+| REQ-66,89,94–95,110,112 | cash_ledger_entry projection; original amounts retained, new cash balance stored; operational/report cash totals consistent | review-fixes and governance integration |
+| REQ-119–128 answer defect only | Personal debt includes penalty/catch-up; explicit pool intent first | authenticated assistant checks in review-fixes; full feature remains owner work |
+| Distribution input corrections | Net interest and expense reversals by original category | review-fixes; REQ-80/81 accounting agreement remains flagged |
+
+Original historical reconciliation records and assessment-inclusive balances are
+retained; fresh reconciliations use cash. See decision 47 for document conflicts.

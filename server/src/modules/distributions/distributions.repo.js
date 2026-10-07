@@ -80,10 +80,10 @@ async function periodMemberTotals(db, { periodStart, periodEnd }) {
 /** REQ-80: interest earned and administrative costs posted during the period. */
 async function periodFinancialTotals(db, { periodStart, periodEnd }) {
     return db.one(
-        `SELECT COALESCE(sum(amount)  FILTER (WHERE entry_type = 'Interest'), 0) AS interest,
-                COALESCE(sum(-amount) FILTER (WHERE entry_type = 'Expense'),  0) AS expenses
-           FROM ledger_entry
-          WHERE club_id = $1 AND (posted_at AT TIME ZONE 'Africa/Johannesburg')::date > $2::date AND (posted_at AT TIME ZONE 'Africa/Johannesburg')::date <= $3::date`,
+        `SELECT COALESCE(sum(e.cash_amount) FILTER (WHERE coalesce(o.entry_type,e.entry_type)='Interest'),0) AS interest,
+                COALESCE(sum(-e.cash_amount) FILTER (WHERE coalesce(o.entry_type,e.entry_type)='Expense'),0) AS expenses
+           FROM cash_ledger_entry e LEFT JOIN ledger_entry o ON o.club_id=e.club_id AND o.entry_id=e.reverses_id
+          WHERE e.club_id=$1 AND (e.posted_at AT TIME ZONE 'Africa/Johannesburg')::date > $2::date AND (e.posted_at AT TIME ZONE 'Africa/Johannesburg')::date <= $3::date`,
         [db.clubId, periodStart, periodEnd]
     );
 }

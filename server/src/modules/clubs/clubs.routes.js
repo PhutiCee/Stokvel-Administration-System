@@ -96,9 +96,9 @@ router.get(
       // getPoolBalance(). The ledger is the only source of truth for this
       // figure — there is no stored balance to disagree with it.
       db.one(
-        `SELECT COALESCE(sum(amount), 0) AS pool_balance,
+        `SELECT COALESCE(sum(cash_amount), 0) AS pool_balance,
                     count(*)::int AS entry_count
-               FROM ledger_entry WHERE club_id = $1`,
+               FROM cash_ledger_entry WHERE club_id = $1`,
         [db.clubId],
       ),
     ]);

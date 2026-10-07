@@ -1,10 +1,10 @@
 "use strict";
 exports.book = (db) =>
   db.many(
-    `SELECT e.entry_id,e.member_id,e.posted_at,e.description,e.amount::text,
+    `SELECT e.entry_id,e.member_id,e.posted_at,e.description,e.cash_amount::text AS amount,e.amount::text AS assessed_amount,
  to_char(e.posted_at AT TIME ZONE 'Africa/Johannesburg','YYYY-MM') AS month,
  coalesce(o.entry_type,e.entry_type)::text AS category
- FROM ledger_entry e LEFT JOIN ledger_entry o ON o.club_id=e.club_id AND o.entry_id=e.reverses_id
+ FROM cash_ledger_entry e LEFT JOIN ledger_entry o ON o.club_id=e.club_id AND o.entry_id=e.reverses_id
  WHERE e.club_id=$1 ORDER BY e.posted_at DESC,e.entry_id DESC`,
     [db.clubId],
   );

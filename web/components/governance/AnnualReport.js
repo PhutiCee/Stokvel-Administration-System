@@ -65,7 +65,7 @@ export default function AnnualReport() {
               </h2>
               <p className="text-sm text-ink-500">
                 {data.start} to {data.asAt}, South African calendar dates.
-                Financial totals are net of reversing entries.
+                Cash balances exclude penalty assessments and waivers. Penalties are shown separately, net of waivers; collections are included in contribution receipts.
               </p>
               <dl className="grid sm:grid-cols-2 gap-3">
                 {[

@@ -5,6 +5,7 @@ const { requireClubContext } = require("../../middleware/tenancy");
 const { authorize } = require("../../middleware/authorize");
 const { asyncRoute } = require("../../middleware/errors");
 const { BadRequest } = require("../../lib/errors");
+const { toCents, toNumeric } = require("../../lib/money");
 
 const router = express.Router();
 router.use(requireClubContext);
@@ -75,18 +76,17 @@ function greetingAnswer(member) {
 }
 
 function balanceAnswer(member) {
-    const outstanding = Number(member.outstanding || 0);
+    const outstanding = toCents(member.outstanding || "0");
     const lines = [
         outstanding > 0
             ? `You currently owe **${member.outstanding} South African rand**.`
-            : "You have **no outstanding balance** — your contributions are up to date.",
+            : "You have **no outstanding contributions or unpaid penalties** in your recorded account.",
         "",
+        `- **Outstanding contributions:** ${member.contribution_outstanding} South African rand`,
+        `- **Unpaid penalties:** ${member.penalties_outstanding} South African rand`,
+        `- **Unbilled catch-up:** ${member.catch_up_amount || "0.00"} South African rand`,
         `- **Standing:** ${member.standing || "Not recorded"}`
     ];
-    const catchUp = Number(member.catch_up_amount || 0);
-    if (catchUp > 0) {
-        lines.push(`- **Catch-up amount owing:** ${member.catch_up_amount} South African rand`);
-    }
     return lines.join("\n");
 }
 
@@ -166,6 +166,8 @@ function fallbackAnswer() {
 // most specific first, so e.g. "queue" is matched before the generic
 // balance/rules patterns.
 const INTENTS = [
+    { test: /\b(pool|funds?)\b|\bclub(?:'s)?\s+balance\b/i,
+      handle: ({ clubSummary }) => poolAnswer(clubSummary) },
     { test: /^\s*(hi|hey|hello|howzit|good\s?(morning|afternoon|evening))\b/i,
       handle: ({ member }) => greetingAnswer(member) },
     { test: /\b(my|user|profile|personal|contact)\b.*\b(detail|information|record|profile|data)s?\b/i,
@@ -182,8 +184,6 @@ const INTENTS = [
       handle: ({ clubSummary }) => cycleAnswer(clubSummary) },
     { test: /\b(rules?|constitution|penalt(?:y|ies)|grace period|cycles?|frequency)\b/i,
       handle: ({ constitution }) => rulesAnswer(constitution) },
-    { test: /\b(pool|funds?)\b/i,
-      handle: ({ clubSummary }) => poolAnswer(clubSummary) },
     { test: /\b(member count|how many members|standing count|suspended)\b/i,
       handle: ({ clubSummary, member }) => membersAnswer(clubSummary, member.role) }
 ];
@@ -211,13 +211,17 @@ router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
                      WHERE club_id = m.club_id
                        AND member_id = m.member_id
                        AND captured_amount < expected_amount - written_off_amount
-                ), 0) AS outstanding
+                ), 0) AS contribution_outstanding,
+                COALESCE((SELECT sum(p.amount-p.settled_amount) FROM penalty p
+                  WHERE p.club_id=m.club_id AND p.member_id=m.member_id AND p.waived_at IS NULL),0) AS penalties_outstanding
            FROM member m
            JOIN user_account u ON u.user_id = m.user_id
            JOIN club c ON c.club_id = m.club_id
           WHERE m.club_id = $1 AND m.member_id = $2`,
         [req.clubId, req.actor.memberId]
     );
+
+    member.outstanding = toNumeric(toCents(member.contribution_outstanding) + toCents(member.penalties_outstanding) + toCents(member.catch_up_amount || "0"));
 
     const contributions = await req.db.many(
         `SELECT c.expected_amount, c.captured_amount, c.status,
@@ -246,7 +250,7 @@ router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
                     count(*) FILTER (WHERE standing = 'In arrears')::int AS in_arrears,
                     count(*) FILTER (WHERE standing = 'Suspended')::int AS suspended
                FROM member
-              WHERE club_id = $1 AND standing <> 'Exited'`,
+              WHERE club_id = $1 AND standing NOT IN ('Exited','Expelled')`,
             [req.clubId]
         ),
         req.db.one(
@@ -262,9 +266,9 @@ router.post("/", authorize("assistant.ask"), asyncRoute(async (req, res) => {
             [req.clubId]
         ),
         req.db.one(
-            `SELECT COALESCE(sum(amount), 0) AS pool_balance,
+            `SELECT COALESCE(sum(cash_amount), 0) AS pool_balance,
                     count(*)::int AS ledger_entry_count
-               FROM ledger_entry
+               FROM cash_ledger_entry
               WHERE club_id = $1`,
             [req.clubId]
         )

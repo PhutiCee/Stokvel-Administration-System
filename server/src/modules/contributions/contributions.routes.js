@@ -34,6 +34,12 @@ const upload = multer({
 // --- /api/cycles -----------------------------------------------------------
 const cycles = express.Router();
 cycles.use(requireClubContext);
+cycles.param('cycleId', (req,res,next,value) => next(
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
+      ? undefined : new BadRequest('The cycle identifier is invalid.')));
+cycles.post('/:cycleId/close', authorize('cycle.close'), asyncRoute(async(req,res) => {
+    res.json(await service.closeCycle(req.db,req.params.cycleId,{actor:req.actor,audit:req.audit}));
+}));
 
 cycles.get(
     "/",

@@ -405,7 +405,15 @@ async function getMemberCredit(tx, memberId) {
   );
 }
 
+async function closeCycle(tx, cycleId, actorUserId) {
+  return tx.one(`UPDATE cycle SET status='Closed',closed_at=now(),closed_by=$3
+    WHERE club_id=$1 AND cycle_id=$2 AND status='Open'
+    RETURNING cycle_id,sequence_number,closed_at,closed_by`,
+    [tx.clubId,cycleId,actorUserId]);
+}
+
 module.exports = {
+  closeCycle,
   forClub,
   constitutionInForceOn,
   constitutionForStart,

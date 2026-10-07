@@ -41,7 +41,7 @@ const { BadRequest, Conflict, NotFound } = require("../../lib/errors");
 async function aggregate(executor = pool) {
   const { rows } = await executor.query(`
       WITH members AS (SELECT standing,count(*)::int AS count FROM member WHERE standing NOT IN ('Exited','Expelled') GROUP BY standing),
-      funds AS (SELECT coalesce(o.entry_type,e.entry_type)::text AS category,sum(e.amount)::text AS amount FROM ledger_entry e LEFT JOIN ledger_entry o ON o.club_id=e.club_id AND o.entry_id=e.reverses_id GROUP BY coalesce(o.entry_type,e.entry_type))
+      funds AS (SELECT coalesce(o.entry_type,e.entry_type)::text AS category,sum(e.cash_amount)::text AS amount FROM cash_ledger_entry e LEFT JOIN ledger_entry o ON o.club_id=e.club_id AND o.entry_id=e.reverses_id GROUP BY coalesce(o.entry_type,e.entry_type))
       SELECT (SELECT count(*)::int FROM club) AS club_count,
        (SELECT count(*)::int FROM club WHERE status='Active') AS active_clubs,
        (SELECT count(*)::int FROM club WHERE status='Suspended') AS suspended_clubs,

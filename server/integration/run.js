@@ -3,7 +3,9 @@
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 for (const file of [
+  "legacy-migrations",
   "completion",
+  "review-fixes",
   "exit-writeoffs",
   "governance",
   "screens",

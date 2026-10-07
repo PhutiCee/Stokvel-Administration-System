@@ -20,7 +20,10 @@ const { toCents, toNumeric } = require("../../lib/money");
  *
  * THE LOCK IS THE IMPORTANT PART OF THIS FUNCTION.
  *
- * Each entry stores the pool balance as it stood immediately after that entry,
+ * Each new entry stores cash_resulting_balance after the event. The original
+ * resulting_balance remains the assessment-inclusive audit balance; old rows
+ * are never rewritten. The cash projection excludes assessments and waivers.
+ * Every entry preserves the original event amount,
  * so a statement can be printed without recomputing the whole book, and so a
  * break in the running balance is visible evidence of tampering.
  *
@@ -65,20 +68,24 @@ async function appendEntry(
   ]);
 
   const { rows: balanceRows } = await client.query(
-    "SELECT COALESCE(sum(amount), 0) AS balance FROM ledger_entry WHERE club_id = $1",
+    "SELECT COALESCE(sum(amount), 0) AS balance, COALESCE(sum(cash_amount),0) AS cash_balance FROM cash_ledger_entry WHERE club_id = $1",
     [clubId],
   );
 
   const amountCents = toCents(amount);
   const resultingCents = toCents(balanceRows[0].balance) + amountCents;
+  const original = reversesId ? (await client.query(
+    'SELECT entry_type FROM ledger_entry WHERE club_id=$1 AND entry_id=$2',[clubId,reversesId])).rows[0] : null;
+  const cashCents = (original?.entry_type || entryType) === 'Penalty' ? 0 : amountCents;
+  const cashBalance = toNumeric(toCents(balanceRows[0].cash_balance) + cashCents);
 
   const { rows } = await client.query(
     `INSERT INTO ledger_entry
              (club_id, member_id, entry_type, amount, resulting_balance,
               description, reference, reverses_id, reason,
-              contribution_id, penalty_id, posted_by, posted_at, payout_id)
+              contribution_id, penalty_id, posted_by, posted_at, payout_id, cash_resulting_balance)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                 COALESCE($13::timestamptz, now()), $14)
+                 COALESCE($13::timestamptz, now()), $14, $15)
          RETURNING entry_id, amount, resulting_balance, posted_at`,
     [
       clubId,
@@ -95,13 +102,16 @@ async function appendEntry(
       postedBy,
       postedAt,
       payoutId,
+      cashBalance,
     ],
   );
 
   return {
     entryId: rows[0].entry_id,
     amount: rows[0].amount,
-    resultingBalance: rows[0].resulting_balance,
+    resultingBalance: cashBalance,
+    recordedBalance: rows[0].resulting_balance,
+    cashAmount: toNumeric(cashCents),
     postedAt: rows[0].posted_at,
   };
 }
@@ -116,21 +126,22 @@ async function appendEntry(
  */
 async function getPoolBalance(db) {
   const row = await db.one(
-    `SELECT COALESCE(sum(amount), 0) AS balance,
-                count(*)::int             AS entries
-           FROM ledger_entry WHERE club_id = $1`,
+    `SELECT COALESCE(sum(cash_amount), 0) AS balance,
+                COALESCE(sum(amount),0) AS recorded_balance,
+                count(*)::int AS entries
+           FROM cash_ledger_entry WHERE club_id = $1`,
     [db.clubId],
   );
-  return { balance: row.balance, entryCount: row.entries };
+  return { balance: row.balance, recordedBalance: row.recorded_balance, entryCount: row.entries };
 }
 
 /** A member's own running total within the club. */
 async function getMemberPosition(db, memberId) {
   const row = await db.one(
-    `SELECT COALESCE(sum(amount) FILTER (WHERE amount > 0), 0) AS paid_in,
-                COALESCE(sum(amount) FILTER (WHERE amount < 0), 0) AS paid_out,
+    `SELECT COALESCE(sum(cash_amount) FILTER (WHERE cash_amount > 0), 0) AS paid_in,
+                COALESCE(sum(cash_amount) FILTER (WHERE cash_amount < 0), 0) AS paid_out,
                 count(*)::int AS entries
-           FROM ledger_entry
+           FROM cash_ledger_entry
           WHERE club_id = $1 AND member_id = $2`,
     [db.clubId, memberId],
   );
@@ -143,12 +154,17 @@ async function getMemberPosition(db, memberId) {
 
 async function listEntries(db, { memberId = null, limit = 100 } = {}) {
   return db.many(
-    `SELECT l.entry_id, l.entry_type, l.amount, l.resulting_balance,
+    `WITH cash_book AS (
+             SELECT e.*, sum(cash_amount) OVER (ORDER BY posted_at,entry_id ROWS UNBOUNDED PRECEDING) AS cash_balance
+             FROM cash_ledger_entry e WHERE club_id=$1
+           )
+           SELECT l.entry_id, l.entry_type, l.amount, l.cash_amount,
+                l.cash_balance::numeric(12,2) AS resulting_balance, l.resulting_balance AS recorded_balance,
                 l.description, l.reference, l.reverses_id, l.reason, l.posted_at,
                 (SELECT r.entry_id FROM ledger_entry r WHERE r.club_id=l.club_id AND r.reverses_id=l.entry_id) AS reversed_by,
                 u.full_name AS posted_by_name,
                 mu.full_name AS member_name
-           FROM ledger_entry l
+           FROM cash_book l
            JOIN user_account u ON u.user_id = l.posted_by
            LEFT JOIN member m   ON m.member_id = l.member_id AND m.club_id = l.club_id
            LEFT JOIN user_account mu ON mu.user_id = m.user_id
@@ -189,10 +205,10 @@ async function generateMemberStatement(db, memberId) {
   if (!member) return null;
 
   const entries = await db.many(
-    `SELECT l.entry_id, l.entry_type, l.amount, l.description, l.reference,
+    `SELECT l.entry_id, l.entry_type, l.amount, l.cash_amount, l.description, l.reference,
                 l.reverses_id, l.reason, l.posted_at,
                 u.full_name AS posted_by_name
-           FROM ledger_entry l
+           FROM cash_ledger_entry l
            JOIN user_account u ON u.user_id = l.posted_by
           WHERE l.club_id = $1 AND l.member_id = $2
           ORDER BY l.posted_at ASC, l.entry_id ASC`,
@@ -205,11 +221,12 @@ async function generateMemberStatement(db, memberId) {
   // call it theirs.
   let runningCents = 0;
   const lines = entries.map((e) => {
-    runningCents += toCents(e.amount);
+    runningCents += toCents(e.cash_amount);
     return {
       entryId: e.entry_id,
       entryType: e.entry_type,
       amount: e.amount,
+      cashAmount: e.cash_amount,
       runningTotal: toNumeric(runningCents),
       description: e.description,
       reference: e.reference,
@@ -221,11 +238,11 @@ async function generateMemberStatement(db, memberId) {
   });
 
   const paidInCents = entries
-    .filter((e) => toCents(e.amount) > 0)
-    .reduce((sum, e) => sum + toCents(e.amount), 0);
+    .filter((e) => toCents(e.cash_amount) > 0)
+    .reduce((sum, e) => sum + toCents(e.cash_amount), 0);
   const paidOutCents = entries
-    .filter((e) => toCents(e.amount) < 0)
-    .reduce((sum, e) => sum + toCents(e.amount), 0);
+    .filter((e) => toCents(e.cash_amount) < 0)
+    .reduce((sum, e) => sum + toCents(e.cash_amount), 0);
 
   // Outstanding contributions, so the statement answers "do I owe anything"
   // as well as "what have I paid".

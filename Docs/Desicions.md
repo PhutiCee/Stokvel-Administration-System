@@ -1236,3 +1236,46 @@ The web follows the SDD burgundy/light palette with grouped navigation and a mob
 menu. Cash-writing capture and payout/claim/distribution approvals now have a separate
 confirmation dialog. Keyboard users can dismiss idle dialogs with Escape and focus
 stays within the dialog. Member permissions remain enforced by the API.
+
+
+## 47. Reviewed defects: cycle closing and available cash — 1 October 2026
+
+The user requested fixes to the review of racha dde4e0a. Migration 025 adds a
+cash ledger projection and closure attribution. Posted assessment amounts and the
+original assessment-inclusive resulting_balance are never changed. Penalty
+assessments and their reversing waivers have zero cash effect. Contributions
+(including allocated penalty collections) enter cash once. New ledger entries also
+store cash_resulting_balance. Historical cash running totals are derived from the
+immutable entries in statement order. API resultingBalance and poolBalance now
+mean cash; recordedBalance retains the original audit value.
+
+Payout eligibility, dashboard/platform totals, assistant pool answers, annual
+opening/closing balances and newly captured reconciliations use this projection.
+Annual penalty totals and the officer penalty indicator are assessments less
+waivers, explicitly labelled non-cash. Existing reconciliation snapshots retain
+their originally recorded numbers: reconcile again rather than rewriting history.
+REQ-112's classification of penalties as expenditure still requires a document
+correction. REQ-80/81's distribution formula is unchanged: it must reconcile to
+cash or refuse. How retained penalties are allocated at year end remains a group
+policy decision; this fix does not invent or redistribute those amounts.
+
+Treasurers can close an open cycle through a confirmed screen action. If debt is
+unpaid, the due date and pinned grace period must have elapsed; fully discharged
+cycles may close earlier. Closing assesses overdue unpaid active members once,
+updates contribution statuses, records closed_by/closed_at, and leaves debts due.
+All changes are one club-locked transaction. Closed cycles cannot reopen. Capture
+also assesses a late penalty before allocating excess so the same payment can
+settle it. Waivers take the same lock. There is no background penalty scheduler in
+this delivery: capture and closure are the assessment triggers. Notifications and
+the standing/defaulter scheduler remain with their assigned owners.
+
+Assistant personal debt now includes outstanding contributions, unpaid penalties
+and unbilled catch-up. Explicit pool/funds questions take precedence over the
+personal-balance intent. This fixes deterministic answers; it does not implement
+the teammate-owned complete AI requirement set.
+
+Interest and expense reversals now feed the year-end distribution input totals.
+Integration evidence includes rollback after penalty assessment during closure,
+role/tenant refusal, grace refusal, immutable closure, waiver cash neutrality,
+excess allocation, cross-screen totals and intent routing. Browser closure uses
+the application action rather than a direct SQL update.

@@ -131,6 +131,7 @@ export const cycles = {
   get: (cycleId) => api.get(`/api/cycles/${cycleId}`),
   /** openCycle() + generateExpectedContributions(), one operation. */
   open: (dates) => api.post("/api/cycles", dates || {}),
+  close: (cycleId) => api.post(`/api/cycles/${cycleId}/close`, {}),
 };
 
 export const contributions = {
@@ -236,12 +237,12 @@ export const claims = {
 
 export const notifications = {
   list: (opts) => api.get("/api/notifications", opts),
-  send: (details) => api.post("/api/notifications", details)
+  send: (details) => api.post("/api/notifications", details),
 };
 
 export const reconciliation = {
   list: (opts) => api.get("/api/reconciliation", opts),
-  record: (details) => api.post("/api/reconciliation", details)
+  record: (details) => api.post("/api/reconciliation", details),
 };
 
 export const platform = {
