@@ -29,6 +29,7 @@ const { validateConsistency } = require("./constitution");
  * in this list: a Rotating club cannot amend itself into a Burial society.
  */
 const AMENDABLE_FIELDS = [
+    "warningAfterMissed", "suspensionAfterMissed", "expulsionAfterMissed",
     "contributionAmount",
     "cycleFrequency",
     "penaltyAmount",

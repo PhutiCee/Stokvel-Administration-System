@@ -19,7 +19,7 @@ router.use(requireClubContext);
 const ctx = (req) => ({ actor: req.actor, audit: req.audit });
 
 router.get("/", authorize("notification.view"), asyncRoute(async (req, res) => {
-    res.json({ notifications: await service.listNotifications(req.db) });
+    res.json({ notifications: await service.listNotifications(req.db, req.actor) });
 }));
 
 router.post("/", authorize("notification.send"), asyncRoute(async (req, res) => {

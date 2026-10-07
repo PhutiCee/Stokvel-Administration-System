@@ -52,7 +52,7 @@ export default function StatementPage() {
   if (!data) return <Loading label="Drawing your statement" />;
 
   const { member, club, lines, summary } = data;
-  const owes = !isZeroAmount(summary.outstanding);
+  const owes = !isZeroAmount(summary.totalOwing);
 
   return (
     <>
@@ -103,11 +103,11 @@ export default function StatementPage() {
           />
           <Cell
             label="Still owing"
-            value={money(summary.outstanding)}
+            value={money(summary.totalOwing)}
             tone={owes ? "exception" : "positive"}
             note={
               owes
-                ? `Across ${summary.unpaidCycles} cycle${summary.unpaidCycles === 1 ? "" : "s"}.`
+                ? `Contributions ${money(summary.outstanding)}, penalties ${money(summary.unsettledPenalties)}, catch-up ${money(member.catchUpAmount)}.`
                 : "You are fully paid up."
             }
           />

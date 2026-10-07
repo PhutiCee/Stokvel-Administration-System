@@ -70,11 +70,12 @@ export default function LedgerPage() {
         }
       />
 
+      <p className="mb-4 text-sm text-ink-500">Pool balances show recorded cash. Penalty assessments and waivers remain in the ledger but do not move cash; penalty collections are included once in contribution receipts.</p>
       {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
       <ReversalRequests requests={requests} onChanged={()=>load()} />
-      {reversing && <ConfirmDialog title={['Payout','Claim'].includes(reversing.entryType)?"Request payout reversal":"Reverse ledger entry"}
-        description={`Original: ${money(reversing.amount)}. An equal and opposite entry will be posted${['Payout','Claim'].includes(reversing.entryType)?' only after Chairperson approval and a Treasurer confirms posting':''}. Recorded allocations and supported payout effects will be corrected atomically. Original records remain. Conflicting later activity prevents posting.`}
-        confirmLabel={['Payout','Claim'].includes(reversing.entryType)?"Request approval":"Post reversal"}
+      {reversing && <ConfirmDialog title={(reversing.reversalScope || ['Payout','Claim'].includes(reversing.entryType))?"Request payout reversal":"Reverse ledger entry"}
+        description={`${reversing.reversalScope ? `This requests reversal of the COMPLETE ${reversing.reversalScope.toLowerCase()}, including every linked entry and its effects. ` : ""}Original: ${money(reversing.amount)}. An equal and opposite entry will be posted${(reversing.reversalScope || ['Payout','Claim'].includes(reversing.entryType))?' only after Chairperson approval and a Treasurer confirms posting':''}. Recorded allocations and supported payout effects will be corrected atomically. Original records remain. Conflicting later activity prevents posting.`}
+        confirmLabel={(reversing.reversalScope || ['Payout','Claim'].includes(reversing.entryType))?"Request approval":"Post reversal"}
         onClose={()=>setReversing(null)} onConfirm={async reason=>{
           const result=await api.reverse(reversing.entryId,reason);
           setNotice(result.status==='Pending'?'Requested: awaiting Chairperson approval.':'Reversing entry posted.');
@@ -100,7 +101,7 @@ export default function LedgerPage() {
                   <th scope="col" className="font-medium py-2.5">Entry</th>
                   <th scope="col" className="font-medium py-2.5">Type</th>
                   <th scope="col" className="font-medium py-2.5 text-right">Amount</th>
-                  <th scope="col" className="font-medium px-5 py-2.5 text-right">Balance</th>
+                  <th scope="col" className="font-medium px-5 py-2.5 text-right">Cash pool</th>
                 </tr>
               </thead>
               <tbody>
@@ -143,6 +144,7 @@ export default function LedgerPage() {
                         )}
                       >
                         {money(e.amount, { sign: true })}
+                        {e.cashAmount !== e.amount && <span className="block text-xs text-ink-500">Cash change: {money(e.cashAmount)}</span>}
                       </td>
 
                       <td className="px-5 py-3 text-right font-mono tnum text-ink-500 whitespace-nowrap">

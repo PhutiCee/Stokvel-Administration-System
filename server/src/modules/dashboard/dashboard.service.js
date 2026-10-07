@@ -106,7 +106,7 @@ async function get(db, actor) {
         indicators.find((m) => m.key === "reconciliation").value = null;
       result.reconciliationMissing = !reconciliation.length;
       result.reconciliationException = reconciliation.some(
-        (r) => toCents(r.difference) !== 0,
+        (r) => toCents(r.difference) !== 0 && !r.resolved,
       );
       indicators.push(
         metric(
@@ -161,9 +161,13 @@ async function get(db, actor) {
           ),
         );
       }
-      result.limitations.push(
-        "Defaulter-stage counts and near-expulsion alerts await the assigned pipeline module.",
-      );
+      const standing=await require('../standing/standing.service').summary(tx);
+      if(!standing.configured) result.limitations.push('Standing thresholds have not been adopted in the constitution. Automatic standing changes are paused.');
+      if(actor.role==='Chairperson') {
+        indicators.push(metric('warning','Members at warning stage',standing.members.filter(m=>m.standing==='In arrears'),null));
+        indicators.push(metric('suspended','Members suspended',standing.members.filter(m=>m.standing==='Suspended'),null));
+        indicators.push(metric('expulsionReview','Members requiring an expulsion resolution',standing.members.filter(m=>m.needsResolution),null));
+      }
     }
     return result;
   });

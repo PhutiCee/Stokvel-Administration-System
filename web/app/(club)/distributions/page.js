@@ -130,7 +130,7 @@ export default function DistributionsPage() {
                     {money(d.totals.distributed)} across {d.perMember.length} members
                   </p>
                 </div>
-                <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
+                <Badge tone={STATUS_TONE[d.status]}>{d.reversed ? "Reversed" : d.status}</Badge>
               </Card>
             </li>
           ))}

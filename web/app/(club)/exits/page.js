@@ -205,7 +205,7 @@ export default function Exits() {
           className="border border-line rounded p-4 my-4"
         >
           <h2 className="font-semibold">
-            {n.full_name} · {n.status}
+            {n.full_name} · {n.reversed ? "Reversed — membership restored" : n.status}
           </h2>
           <p>
             Notice: {fmtDate(n.notice_date)} · Earliest exit:{" "}

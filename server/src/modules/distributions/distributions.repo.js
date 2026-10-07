@@ -20,7 +20,7 @@ async function lastApprovedDistribution(db) {
     return db.one(
         `SELECT distribution_id, year_end_date::text AS year_end_date, period_end::text AS period_end
            FROM distribution
-          WHERE club_id = $1 AND status = 'Approved'
+          WHERE club_id = $1 AND status = 'Approved' AND reversed_by_request_id IS NULL
           ORDER BY period_end DESC
           LIMIT 1`,
         [db.clubId]
@@ -31,7 +31,7 @@ async function lastApprovedDistribution(db) {
 async function existingForYearEnd(db, yearEndDate) {
     return db.one(
         `SELECT distribution_id, status FROM distribution
-          WHERE club_id = $1 AND year_end_date = $2::date AND status <> 'Cancelled'`,
+          WHERE club_id = $1 AND year_end_date = $2::date AND status <> 'Cancelled' AND reversed_by_request_id IS NULL`,
         [db.clubId, yearEndDate]
     );
 }
@@ -89,7 +89,7 @@ async function periodFinancialTotals(db, { periodStart, periodEnd }) {
 }
 
 const COLUMNS = `
-    d.distribution_id, d.status, d.year_end_date::text AS year_end_date,
+    d.distribution_id, d.status, d.reversed_by_request_id, d.year_end_date::text AS year_end_date,
     d.period_start::text AS period_start, d.period_end::text AS period_end,
     d.constitution_version,
     d.total_contributions, d.total_penalties, d.total_interest, d.total_expenses,

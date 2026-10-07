@@ -43,7 +43,7 @@ async function authenticate({ identifier, password, ipAddress, userAgent, audit 
 
     const account = await repo.findByIdentifier(identifier);
 
-    if (!account) {
+    if (!account || account.is_system) {
         // Spend the same time we would have spent on a real verification, so
         // that response time does not reveal which numbers are registered.
         await wasteTime();

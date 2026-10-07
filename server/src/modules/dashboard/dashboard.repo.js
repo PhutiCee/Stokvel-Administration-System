@@ -25,7 +25,7 @@ exports.penalties = (db, own) =>
   );
 exports.reconciliation = (db) =>
   db.many(
-    `SELECT reconciliation_id,as_at_date::text,bank_balance::text,ledger_balance::text,difference::text,note FROM reconciliation WHERE club_id=$1 ORDER BY as_at_date DESC,recorded_at DESC,reconciliation_id DESC LIMIT 1`,
+    `SELECT r.reconciliation_id,as_at_date::text,bank_balance::text,ledger_balance::text,difference::text,note,EXISTS(SELECT 1 FROM reconciliation_resolution x WHERE x.club_id=r.club_id AND x.reconciliation_id=r.reconciliation_id) AS resolved FROM reconciliation r WHERE r.club_id=$1 ORDER BY as_at_date DESC,recorded_at DESC,reconciliation_id DESC LIMIT 1`,
     [db.clubId],
   );
 exports.approvals = (db) =>

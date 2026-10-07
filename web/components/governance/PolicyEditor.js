@@ -2,6 +2,9 @@
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 export const FIELD_LABELS = {
+  warningAfterMissed:"Warning after missed contributions",
+  suspensionAfterMissed:"Suspension after missed contributions",
+  expulsionAfterMissed:"Expulsion review after missed contributions",
   contributionAmount: "Contribution amount",
   cycleFrequency: "Cycle frequency",
   penaltyAmount: "Late penalty",

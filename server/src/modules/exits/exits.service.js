@@ -242,6 +242,9 @@ async function decide(db, id, input, ctx) {
         postedBy: ctx.actor.userId,
       });
     }
+    const restoration = require('../ledger/settlements.repo');
+    const queueBefore = await restoration.queueIds(tx);
+    const penaltyAllocations = [];
     let payoutId = null,
       repaymentId = null;
     if (toCents(calc.repayable) > 0) {
@@ -276,16 +279,20 @@ async function decide(db, id, input, ctx) {
         remainingPenalty,
         toCents(penalty.amount) - toCents(penalty.settled_amount),
       );
-      if (applied > 0)
+      if (applied > 0) {
+        penaltyAllocations.push({id:penalty.penalty_id,before:penalty.settled_amount,after:toNumeric(toCents(penalty.settled_amount)+applied)});
         await repo.settlePenalty(
           tx,
           penalty.penalty_id,
           toNumeric(toCents(penalty.settled_amount) + applied),
         );
+      }
       remainingPenalty -= applied;
     }
     await queue.removeFromQueue(tx, m.member_id);
     await repo.endMember(tx, m.member_id, todayIso());
+    await tx.query('INSERT INTO exit_effect(club_id,notice_id,member_before,queue_before,queue_after,penalty_allocations) VALUES($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6::jsonb)',
+      [tx.clubId,id,JSON.stringify({member_id:m.member_id,role:m.role,standing:m.standing,exit_date:m.exit_date,credit_amount:m.credit_amount}),JSON.stringify(queueBefore),JSON.stringify(await restoration.queueIds(tx)),JSON.stringify(penaltyAllocations)]);
     return repo.decide(tx, id, {
       status: "Approved",
       userId: ctx.actor.userId,

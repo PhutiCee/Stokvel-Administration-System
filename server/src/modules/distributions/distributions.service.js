@@ -191,6 +191,7 @@ function presentDistribution(d) {
     return {
         distributionId: d.distribution_id,
         status: d.status,
+        reversed: !!d.reversed_by_request_id,
         yearEndDate: d.year_end_date,
         period: { start: d.period_start, end: d.period_end },
         constitutionVersion: d.constitution_version,
@@ -312,6 +313,7 @@ async function initiateDistribution(db, { actor, audit }) {
 
         const rule = describeDistributionRule({ constitutionVersion: constitution.version, yearEndDate: a.yearEndDate });
         for (const m of a.result.shares.perMember) {
+            if(m.finalCents===0) continue; // Keep zero shares in the assessment without creating a payment.
             await repo.insertMemberPayout(tx, {
                 memberId: m.memberId, amount: toNumeric(m.finalCents), distributionId: created.distribution_id,
                 constitutionVersion: constitution.version, rule,
@@ -365,6 +367,7 @@ async function approveDistribution(db, distributionId, { actor, audit }) {
         const byId = new Map(members.map((m) => [m.member_id, m]));
         let resultingBalance = null;
         for (const share of d.assessment_at_initiation.shares.perMember) {
+            if(share.finalCents===0) continue;
             const p = byId.get(share.memberId);
             const entry = await ledgerService.appendEntry(client, {
                 clubId: db.clubId,

@@ -25,11 +25,12 @@ export default function ReversalRequests({ requests, onChanged }) {
         <Card key={r.request_id} className="p-4 space-y-2">
           <div className="flex flex-wrap justify-between gap-2">
             <h3 className="font-medium">
-              {r.entry_type} · original {money(r.amount)}
+              {r.scope || r.entry_type} · original {money(r.amount)}
             </h3>
             <Badge>{r.status}</Badge>
           </div>
           <p className="text-sm break-words">{r.description}</p>
+          {r.scope && <p className="text-sm font-medium">Complete {r.scope.toLowerCase()}: {r.entry_count} entries. Approval covers all entries and their associated effects.</p>}
           <p className="text-sm break-words">Reason: {r.reason}</p>
           <p className="text-sm text-ink-500">
             Requested by {r.requested_by_name} · {fmtDateTime(r.requested_at)}
@@ -72,7 +73,7 @@ export default function ReversalRequests({ requests, onChanged }) {
                 ? "Approve payout reversal"
                 : "Reject reversal"
           }
-          description={`Original amount ${money(action.r.amount)}. Reason: ${action.r.reason}. ${action.kind === "approve" ? "Approval permits a Treasurer to post; it does not move money yet." : ""}`}
+          description={`${action.r.scope ? `Complete ${action.r.scope}: ${action.r.entry_count} entries. ` : ""}Original amount ${money(action.r.amount)}. Reason: ${action.r.reason}. ${action.kind === "approve" ? "Approval permits a Treasurer to post; it does not move money yet." : ""}`}
           requireReason={action.kind === "reject"}
           onClose={() => setAction(null)}
           onConfirm={async (reason) => {

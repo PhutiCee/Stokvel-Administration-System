@@ -43,7 +43,7 @@ async function findByIdentifier(identifier) {
 
   const { rows } = await pool.query(
     `SELECT user_id, phone, email, full_name, password_hash,
-                is_platform_admin, failed_attempts, locked_until
+                is_platform_admin, is_system, failed_attempts, locked_until
            FROM user_account
           WHERE ($1::text IS NOT NULL AND phone = $1)
              OR ($2::text IS NOT NULL AND email = $2)

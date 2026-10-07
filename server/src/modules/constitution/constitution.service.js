@@ -99,6 +99,9 @@ async function createNewVersion(db, { changes, effectiveDate, amendmentNote, inh
 
         const created = await repo.insertVersion(tx, {
             version: check.nextVersion,
+            warningAfterMissed:m.warningAfterMissed == null ? null : Number(m.warningAfterMissed),
+            suspensionAfterMissed:m.suspensionAfterMissed == null ? null : Number(m.suspensionAfterMissed),
+            expulsionAfterMissed:m.expulsionAfterMissed == null ? null : Number(m.expulsionAfterMissed),
             effectiveDate,
             contributionAmount: toNumeric(toCents(m.contributionAmount)),
             cycleFrequency: m.cycleFrequency,

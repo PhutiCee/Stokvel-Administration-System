@@ -74,12 +74,13 @@ async function updateStanding(db, clubId, memberId, fromStanding, toStanding) {
 }
 
 async function recordChange(db, { clubId, memberId, from, to, reason, changedOn, changedBy }) {
-    await db.query(
+    const result = await db.query(
         `INSERT INTO standing_change
                 (club_id, member_id, from_standing, to_standing, reason, changed_on, changed_by)
-         VALUES ($1, $2, $3::member_standing, $4::member_standing, $5, $6::date, $7)`,
+         VALUES ($1, $2, $3::member_standing, $4::member_standing, $5, $6::date, $7) RETURNING change_id`,
         [clubId, memberId, from, to, reason, changedOn, changedBy]
     );
+    return result.rows[0];
 }
 
 /** Newest first. Pass a memberId to see one member's history. */

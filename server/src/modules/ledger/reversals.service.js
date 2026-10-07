@@ -1,6 +1,7 @@
 "use strict";
 const repo = require("./reversals.repo");
 const ledger = require("./ledger.service");
+const settlements = require("./settlements.repo");
 const compensation = require("./compensation.repo");
 const { withClubTransaction } = require("../../db/tx");
 const { toCents, toNumeric } = require("../../lib/money");
@@ -52,7 +53,7 @@ async function original(db, id) {
     );
   return e;
 }
-async function post(tx, client, r, e, actor) {
+async function post(tx, client, r, e, actor, bundle = null) {
   const entry = await ledger.appendEntry(client, {
     clubId: tx.clubId,
     memberId: e.member_id,
@@ -68,7 +69,8 @@ async function post(tx, client, r, e, actor) {
     postedBy: actor.userId,
   });
   if (e.entry_type === "Contribution") await compensation.reverseReceipt(tx,e);
-  if (needsApproval(e)) await compensation.reversePayout(tx,e,entry.entryId);
+  if (bundle && e.payout_id) await tx.query('UPDATE payout SET reversed_entry_id=$3 WHERE club_id=$1 AND payout_id=$2',[tx.clubId,e.payout_id,entry.entryId]);
+  else if (needsApproval(e)) await compensation.reversePayout(tx,e,entry.entryId);
   return repo.posted(tx, r.request_id, entry.entryId, actor.userId);
 }
 async function reverse(db, id, input, ctx) {
@@ -79,6 +81,8 @@ async function reverse(db, id, input, ctx) {
       throw new RuleRefusal(
         "A reversal request already exists for this entry.",
       );
+    const bundle = await settlements.create(tx,e,why,ctx.actor);
+    if (bundle) return bundle;
     const r = await repo.create(tx, id, why, ctx.actor.userId);
     return needsApproval(e) ? r : post(tx, client, r, e, ctx.actor);
   });
@@ -94,6 +98,17 @@ async function decide(db, id, input, ctx) {
       throw new RuleRefusal("The requester cannot approve their own reversal.");
     if (!["approve", "reject"].includes(input.decision))
       throw new BadRequest("Choose approve or reject.");
+    const bundle = await settlements.group(tx,id);
+    if (bundle) {
+      if(input.decision==='approve') await settlements.check(tx,bundle);
+      let root;
+      for(const item of bundle.rows) {
+        if(item.status!=='Pending') throw new RuleRefusal('The settlement request changed. Reload it.');
+        const decided = await repo.decide(tx,item.request_id,ctx.actor.userId,input.decision==='approve'?'Approved':'Rejected',input.decision==='reject'?reason(input.reason):null);
+        if(item.request_id===id)root=decided;
+      }
+      return root;
+    }
     return repo.decide(
       tx,
       id,
@@ -111,6 +126,18 @@ async function postApproved(db, id, ctx) {
       throw new RuleRefusal("Chairperson approval is required before posting.");
     if (r.decided_by === ctx.actor.userId)
       throw new RuleRefusal("The approver cannot post this reversal.");
+    const bundle=await settlements.group(tx,id);
+    if(bundle) {
+      await settlements.check(tx,bundle);
+      let root;
+      for(const item of bundle.rows) {
+        if(item.status!=='Approved' || item.decided_by===ctx.actor.userId)throw new RuleRefusal('Every settlement entry requires approval by a different Chairperson.');
+        const posted=await post(tx,client,item,await original(tx,item.entry_id),ctx.actor,bundle);
+        if(item.request_id===id)root=posted;
+      }
+      await settlements.finish(tx,bundle,id);
+      return root;
+    }
     return post(tx, client, r, await original(tx, r.entry_id), ctx.actor);
   });
 }

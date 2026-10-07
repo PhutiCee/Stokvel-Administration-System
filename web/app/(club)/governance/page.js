@@ -22,6 +22,8 @@ import PolicyEditor, {
 } from "@/components/governance/PolicyEditor";
 import ExitWriteoffPicker from "@/components/governance/ExitWriteoffPicker";
 import AnnualReport from "@/components/governance/AnnualReport";
+import StandingPanel from "@/components/governance/StandingPanel";
+import ConstitutionSummary from "@/components/governance/ConstitutionSummary";
 import AmendmentForm from "@/components/governance/AmendmentForm";
 const today = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -239,6 +241,8 @@ export default function GovernancePage() {
           )}
         </div>
       </div>
+      {settings && <ConstitutionSummary value={settings.constitution} />}
+      {can("view.members") && <StandingPanel />}
       {error && <Alert tone="exception">{error}</Alert>}
       {notice && <Alert tone="positive">{notice}</Alert>}
       {settings && !settings.policy && (

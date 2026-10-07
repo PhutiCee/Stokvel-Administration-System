@@ -51,6 +51,7 @@ async function reconcile(db, { bankBalance, asAtDate, note }, { actor, audit }) 
     const result = await withClubTransaction(db.clubId,async tx=>{
     await tx.one('SELECT club_id FROM club WHERE club_id=$1 FOR UPDATE',[tx.clubId]);
     const ledgerCents = toCents(await repo.ledgerBalance(tx,date));
+    const contributionsCaptured = await repo.contributionTotal(tx,date);
     const differenceCents = bankCents - ledgerCents;
 
     if(differenceCents!==0 && (typeof note!=='string' || !note.trim()))throw new BadRequest('Explain the reconciliation difference; it cannot be cleared silently.');
@@ -60,12 +61,13 @@ async function reconcile(db, { bankBalance, asAtDate, note }, { actor, audit }) 
         ledgerBalance: toNumeric(ledgerCents),
         difference: toNumeric(differenceCents),
         note: note && String(note).trim() ? String(note).trim() : null,
+        contributionsCaptured,
         recordedBy: actor.userId
     });
 
-    return {created,ledgerCents,differenceCents};
+    return {created,ledgerCents,differenceCents,contributionsCaptured};
     });
-    const {created,ledgerCents,differenceCents}=result;
+    const {created,ledgerCents,differenceCents,contributionsCaptured}=result;
     const status = statusOf(differenceCents);
     await audit("reconciliation.record", "Success", {
         detail: status === "Balanced"
@@ -77,6 +79,7 @@ async function reconcile(db, { bankBalance, asAtDate, note }, { actor, audit }) 
 
     return {
         reconciliationId: created.reconciliation_id,
+        contributionsCaptured,
         asAtDate: date,
         bankBalance: toNumeric(bankCents),
         ledgerBalance: toNumeric(ledgerCents),
@@ -91,9 +94,30 @@ async function listReconciliations(db) {
     const [history, ledger] = await Promise.all([repo.listForClub(db), repo.ledgerBalance(db)]);
     return {
         ledgerBalance: ledger,
-        latest: history[0] ? { ...history[0], status: statusOf(toCents(history[0].difference)) } : null,
-        reconciliations: history.map((r) => ({ ...r, status: statusOf(toCents(r.difference)) }))
+        contributionsCaptured: await repo.contributionTotal(db),
+        latest: history[0] ? { ...history[0], status: history[0].resolution ? "Resolved" : statusOf(toCents(history[0].difference)) } : null,
+        reconciliations: history.map((r) => ({ ...r, status: r.resolution ? "Resolved" : statusOf(toCents(r.difference)) }))
     };
 }
 
 module.exports = { reconcile, listReconciliations };
+
+module.exports.resolve = async (db,id,input,{actor,audit}) => {
+  const {BadRequest,NotFound,RuleRefusal}=require('../../lib/errors');
+  if(!Array.isArray(input.entryIds) || !input.entryIds.length || input.entryIds.length>30 || new Set(input.entryIds).size!==input.entryIds.length || input.entryIds.some(x=>typeof x!=='string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(x)))throw new BadRequest('Choose distinct explanatory ledger entries.');
+  if(typeof input.explanation!=='string' || input.explanation.trim().length<3 || input.explanation.length>2000)throw new BadRequest('Explain how these entries resolve the recorded difference.');
+  await withClubTransaction(db.clubId,async tx=>{
+    await tx.one('SELECT club_id FROM club WHERE club_id=$1 FOR UPDATE',[db.clubId]);
+    const r=await tx.one('SELECT * FROM reconciliation WHERE club_id=$1 AND reconciliation_id=$2',[db.clubId,id]);
+    if(!r)throw new NotFound('Reconciliation not found in this club.');
+    if(toCents(r.difference)===0 || await tx.one('SELECT reconciliation_id FROM reconciliation_resolution WHERE club_id=$1 AND reconciliation_id=$2',[db.clubId,id]))throw new RuleRefusal('This reconciliation has no unresolved gap.');
+    const entries=await tx.many(`SELECT e.entry_id,e.cash_amount FROM cash_ledger_entry e WHERE e.club_id=$1 AND e.entry_id=ANY($2::uuid[]) AND e.posted_at>= $3
+      AND NOT EXISTS(SELECT 1 FROM ledger_entry rev WHERE rev.club_id=e.club_id AND rev.reverses_id=e.entry_id)
+      AND NOT EXISTS(SELECT 1 FROM reconciliation_resolution_entry used WHERE used.club_id=e.club_id AND used.entry_id=e.entry_id)`,[db.clubId,input.entryIds,r.recorded_at]);
+    if(entries.length!==input.entryIds.length || entries.some(e=>toCents(e.cash_amount)===0) || entries.reduce((n,e)=>n+toCents(e.cash_amount),0)!==toCents(r.difference))throw new RuleRefusal('The unused, unreversed entries posted since this check must exactly explain its difference.');
+    await tx.query('INSERT INTO reconciliation_resolution(club_id,reconciliation_id,explanation,resolved_by) VALUES($1,$2,$3,$4)',[db.clubId,id,input.explanation.trim(),actor.userId]);
+    for(const e of entries) await tx.query('INSERT INTO reconciliation_resolution_entry(club_id,reconciliation_id,entry_id) VALUES($1,$2,$3)',[db.clubId,id,e.entry_id]);
+  });
+  await audit('reconciliation.resolve','Success',{targetType:'reconciliation',targetId:id,detail:input.explanation.trim()});
+  return {reconciliationId:id,status:'Resolved'};
+};

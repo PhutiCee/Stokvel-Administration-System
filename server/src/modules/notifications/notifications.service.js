@@ -41,8 +41,8 @@ async function sendNotification(db, { title, message }, { actor, audit }) {
     };
 }
 
-async function listNotifications(db) {
-    return repo.listForClub(db);
+async function listNotifications(db, actor) {
+    return repo.listForClub(db, {memberId:actor.memberId});
 }
 
 module.exports = { sendNotification, listNotifications };

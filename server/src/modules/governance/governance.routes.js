@@ -6,6 +6,7 @@ const { authorize } = require("../../middleware/authorize");
 const { asyncRoute } = require("../../middleware/errors");
 const ctx = (req) => ({ actor: req.actor, audit: req.audit });
 router.use(requireClubContext);
+router.get("/standing",authorize("view.members"),asyncRoute(async(req,res)=>res.json(await require("../standing/standing.service").summary(req.db))));
 router.get(
     "/annual-report",
     authorize("view.ledger"),

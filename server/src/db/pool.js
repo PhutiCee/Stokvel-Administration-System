@@ -63,7 +63,7 @@ pool.on("error", (err) => {
 // described in SDD 4.1.
 
 const TENANT_SCOPED_TABLES = [
-  "cash_ledger_entry",
+  "cash_ledger_entry", "assistant_query", "reversal_bundle", "exit_effect", "exit_reversal",
   "notification", "standing_change",
   "capture_receipt", "receipt_allocation", "credit_application", "payout_effect",
   "club",
@@ -81,7 +81,7 @@ const TENANT_SCOPED_TABLES = [
   "penalty",
   "ledger_entry",
   "ledger_reversal_request",
-  "reconciliation",
+  "reconciliation", "reconciliation_resolution", "reconciliation_resolution_entry",
   "payout",
   "queue_swap",
   "queue_arrears_decision",

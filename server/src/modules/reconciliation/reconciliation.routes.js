@@ -26,4 +26,8 @@ router.post("/", authorize("reconciliation.record"), asyncRoute(async (req, res)
     res.status(201).json({ reconciliation: await service.reconcile(req.db, req.body || {}, ctx(req)) });
 }));
 
+router.post('/:id/resolve',authorize('reconciliation.record'),asyncRoute(async(req,res)=>{
+  if(!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(req.params.id))throw new (require('../../lib/errors').BadRequest)('Invalid reconciliation identifier.');
+  res.json(await service.resolve(req.db,req.params.id,req.body||{},ctx(req)));
+}));
 module.exports = router;

@@ -2,6 +2,7 @@
 const { BadRequest, RuleRefusal } = require("../lib/errors");
 // This list defines supported parameters, NOT a club's amendment classes.
 const POLICY_FIELDS = [
+    "warningAfterMissed", "suspensionAfterMissed", "expulsionAfterMissed",
     "contributionAmount",
     "cycleFrequency",
     "penaltyAmount",
@@ -112,7 +113,11 @@ function validatePolicy(value, clubType) {
             rule: checkRule(c.rule),
         };
     });
-    if (seen.size !== fields.length)
+    const standingFields = ['warningAfterMissed','suspensionAfterMissed','expulsionAfterMissed'];
+    const omitted = fields.filter(f=>!seen.has(f));
+    // Existing adopted policies remain valid; no voting threshold is invented for
+    // new parameters. Amend their class coverage before proposing threshold changes.
+    if (omitted.length && !(omitted.length===3 && omitted.every(f=>standingFields.includes(f))))
         throw new BadRequest(
             "Assign every supported parameter to an amendment class, including voting rules.",
         );

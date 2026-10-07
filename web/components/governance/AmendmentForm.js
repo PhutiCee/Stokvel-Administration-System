@@ -18,6 +18,7 @@ export default function AmendmentForm({
     [policy, setPolicy] = useState(() => currentPolicy || emptyPolicy());
   const set = (key, value) => setChanges((c) => ({ ...c, [key]: value }));
   const numeric = [
+    "warningAfterMissed", "suspensionAfterMissed", "expulsionAfterMissed",
     "contributionAmount",
     "penaltyAmount",
     "gracePeriodDays",

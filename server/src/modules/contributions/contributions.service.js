@@ -214,7 +214,32 @@ async function levyLatePenalty(tx, contribution, amount, actor) {
     description:`Late penalty assessment, cycle ${contribution.sequence_number} — ${contribution.full_name}`,
     penaltyId:penalty.penalty_id,postedBy:actor.userId,
   });
+  if (penalty) await require('../notifications/notifications.repo').notifyMemberAndOfficers(tx, {
+    memberId:contribution.member_id,sentBy:actor.userId,key:`late:${contribution.contribution_id}`,
+    title:'Contribution overdue',message:`A late penalty was assessed for cycle ${contribution.sequence_number}. Open your statement for the current amount owing.`
+  });
   return penalty;
+}
+
+// Caller owns the club lock and transaction. Unique penalties make repeated runs safe.
+async function sweepLateContributions(tx, actor) {
+  const rows = await tx.many(`SELECT c.*,cy.sequence_number,k.penalty_amount,u.full_name
+    FROM contribution c JOIN cycle cy ON cy.club_id=c.club_id AND cy.cycle_id=c.cycle_id
+    JOIN constitution k ON k.club_id=cy.club_id AND k.constitution_id=cy.constitution_id
+    JOIN member m ON m.club_id=c.club_id AND m.member_id=c.member_id
+    JOIN user_account u ON u.user_id=m.user_id
+    WHERE c.club_id=$1 AND m.standing NOT IN ('Exited','Expelled')
+      AND c.expected_amount>c.captured_amount+c.written_off_amount
+      AND cy.due_date+k.grace_period_days<$2::date`,[tx.clubId,todayIso()]);
+  for (const row of rows) {
+    await repo.setStatus(tx,row.contribution_id,'Late');
+    await levyLatePenalty(tx,row,row.penalty_amount,actor);
+    await require('../notifications/notifications.repo').notifyMemberAndOfficers(tx, {
+      memberId:row.member_id, sentBy:actor.userId, key:`late:${row.contribution_id}`,
+      title:'Contribution overdue', message:`Your contribution for cycle ${row.sequence_number} is overdue. Open your statement for the current amount owing.`
+    });
+  }
+  return rows.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +493,7 @@ async function captureContribution(
     ]);
 
 
+    await require("../standing/standing.service").checkInTransaction(tx, {actorUserId:actor.userId});
     return { status, newCapturedCents, entry, excess, penalty };
   });
 
@@ -673,6 +699,7 @@ async function waivePenalty(db, penaltyId, { reason }, { actor, audit }) {
       waivedBy: actor.userId,
       reason: String(reason).trim(),
     });
+    await require("../standing/standing.service").checkInTransaction(tx, {actorUserId:actor.userId});
     return { penalty, entry };
   });
 
@@ -831,6 +858,7 @@ async function deleteProof(db, contributionId, { actor, audit }) {
 module.exports = {
   openCycle,
   closeCycle,
+  sweepLateContributions,
   captureContribution,
   applyExcess,
   listCycles,

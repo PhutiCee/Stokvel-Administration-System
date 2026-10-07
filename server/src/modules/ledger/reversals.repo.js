@@ -38,11 +38,12 @@ const posted = (db, id, entryId, userId) =>
   );
 const list = (db) =>
   db.many(
-    `SELECT r.*,e.entry_type,e.amount,e.description,u.full_name AS requested_by_name,
+    `SELECT r.*,b.scope,(SELECT count(*)::int FROM reversal_bundle all_b WHERE all_b.club_id=r.club_id AND all_b.root_request_id=r.request_id) AS entry_count,e.entry_type,e.amount,e.description,u.full_name AS requested_by_name,
  d.full_name AS decided_by_name FROM ledger_reversal_request r
+ LEFT JOIN reversal_bundle b ON b.club_id=r.club_id AND b.request_id=r.request_id
  JOIN ledger_entry e ON e.club_id=r.club_id AND e.entry_id=r.entry_id
  JOIN user_account u ON u.user_id=r.requested_by LEFT JOIN user_account d ON d.user_id=r.decided_by
- WHERE r.club_id=$1 ORDER BY CASE WHEN r.status IN ('Pending','Approved') THEN 0 ELSE 1 END,r.requested_at DESC,r.request_id DESC`,
+ WHERE r.club_id=$1 AND (b.root_request_id IS NULL OR b.root_request_id=r.request_id) ORDER BY CASE WHEN r.status IN ('Pending','Approved') THEN 0 ELSE 1 END,r.requested_at DESC,r.request_id DESC`,
     [db.clubId],
   );
 module.exports = {

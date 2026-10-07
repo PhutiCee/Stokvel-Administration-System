@@ -6,6 +6,7 @@ for (const file of [
   "legacy-migrations",
   "completion",
   "review-fixes",
+  "final-workflows",
   "exit-writeoffs",
   "governance",
   "screens",

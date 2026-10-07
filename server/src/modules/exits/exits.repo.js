@@ -47,7 +47,15 @@ const pending = (db, id) =>
 const create = (db, x) =>
   db.one(
     `INSERT INTO exit_notice(club_id,member_id,notice_date,earliest_exit,mapping_id,requested_by,condition_facts) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING notice_id`,
-    [db.clubId, x.memberId, x.today, x.earliest, x.mappingId, x.userId, JSON.stringify(x.conditionFacts || null)],
+    [
+      db.clubId,
+      x.memberId,
+      x.today,
+      x.earliest,
+      x.mappingId,
+      x.userId,
+      JSON.stringify(x.conditionFacts || null),
+    ],
   );
 const assess = (db, id, calculation, user) =>
   db.one(
@@ -57,6 +65,7 @@ const assess = (db, id, calculation, user) =>
 const list = (db, own) =>
   db.many(
     `SELECT n.*,n.notice_date::text,n.earliest_exit::text,u.full_name,
+ EXISTS(SELECT 1 FROM exit_reversal r WHERE r.club_id=n.club_id AND r.notice_id=n.notice_id) AS reversed,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('resolutionId',r.resolution_id,'amount',r.payload->'exitWriteOff'->>'amount','text',r.text,'applied',r.applied_at IS NOT NULL) ORDER BY r.created_at DESC) FROM resolution r WHERE r.club_id=n.club_id AND r.payload->'exitWriteOff'->>'noticeId'=n.notice_id::text AND r.outcome='Carried'),'[]'::jsonb) AS writeoff_resolutions,
  (SELECT row_to_json(a) FROM (SELECT assessment_id,calculation,assessed_at FROM exit_assessment WHERE club_id=n.club_id AND notice_id=n.notice_id ORDER BY assessed_at DESC,assessment_id DESC LIMIT 1)a) AS assessment
  FROM exit_notice n JOIN member m ON m.club_id=n.club_id AND m.member_id=n.member_id JOIN user_account u ON u.user_id=m.user_id
@@ -159,11 +168,14 @@ module.exports.settlePenalty = (db, id, amount) =>
   );
 
 module.exports.conditionFacts = async (db, memberId, evaluatedOn) => {
-  const r=await db.one(`SELECT greatest($3::date-m.join_date,0)::int AS "membershipDays",
+  const r = await db.one(
+    `SELECT greatest($3::date-m.join_date,0)::int AS "membershipDays",
     (SELECT count(*)::int FROM contribution c JOIN cycle cy ON cy.club_id=c.club_id AND cy.cycle_id=c.cycle_id
      WHERE c.club_id=m.club_id AND c.member_id=m.member_id AND cy.start_date>=m.join_date AND cy.status='Closed'
      AND cy.due_date<=$3::date AND (cy.closed_at AT TIME ZONE 'Africa/Johannesburg')::date<=$3::date
      AND c.written_off_amount=0 AND c.captured_amount>=c.expected_amount) AS "completedPaidCycles"
-     FROM member m WHERE m.club_id=$1 AND m.member_id=$2`,[db.clubId,memberId,evaluatedOn]);
-  return {...r,evaluatedOn};
+     FROM member m WHERE m.club_id=$1 AND m.member_id=$2`,
+    [db.clubId, memberId, evaluatedOn],
+  );
+  return { ...r, evaluatedOn };
 };

@@ -45,6 +45,7 @@ router.get("/", authorize("view.ledger"), asyncRoute(async (req, res) => {
         entries: entries.map((e) => ({
             entryId: e.entry_id,
             entryType: e.entry_type,
+            reversalScope: e.reversal_scope,
             amount: e.amount,
             resultingBalance: e.resulting_balance,
             recordedBalance: e.recorded_balance,

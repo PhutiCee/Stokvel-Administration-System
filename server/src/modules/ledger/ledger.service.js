@@ -162,9 +162,12 @@ async function listEntries(db, { memberId = null, limit = 100 } = {}) {
                 l.cash_balance::numeric(12,2) AS resulting_balance, l.resulting_balance AS recorded_balance,
                 l.description, l.reference, l.reverses_id, l.reason, l.posted_at,
                 (SELECT r.entry_id FROM ledger_entry r WHERE r.club_id=l.club_id AND r.reverses_id=l.entry_id) AS reversed_by,
+                CASE WHEN p.distribution_id IS NOT NULL THEN 'Distribution'
+                 WHEN EXISTS(SELECT 1 FROM exit_notice n WHERE n.club_id=l.club_id AND l.entry_id IN(n.repayment_entry_id,n.forfeiture_entry_id)) THEN 'Exit settlement' ELSE NULL END AS reversal_scope,
                 u.full_name AS posted_by_name,
                 mu.full_name AS member_name
            FROM cash_book l
+           LEFT JOIN payout p ON p.club_id=l.club_id AND p.payout_id=l.payout_id
            JOIN user_account u ON u.user_id = l.posted_by
            LEFT JOIN member m   ON m.member_id = l.member_id AND m.club_id = l.club_id
            LEFT JOIN user_account mu ON mu.user_id = m.user_id
@@ -281,6 +284,7 @@ async function generateMemberStatement(db, memberId) {
       paidOut: toNumeric(Math.abs(paidOutCents)),
       netPosition: toNumeric(paidInCents + paidOutCents),
       outstanding: owing.outstanding,
+      totalOwing: toNumeric(toCents(owing.outstanding) + toCents(penalties.unsettled) + toCents(member.catch_up_amount || "0")),
       unpaidCycles: owing.unpaid_cycles,
       unsettledPenalties: penalties.unsettled,
       waivedPenalties: penalties.waived,

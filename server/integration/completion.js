@@ -172,7 +172,14 @@ async function main() {
   const policy = {
     period: "membership",
     forfeitPercent: "10",
-    condition: {metric:"membershipDays",threshold:10000,evaluateAt:"notice",afterPercent:"0",definition:"Fixture rule: retain ten percent until ten thousand membership days."},
+    condition: {
+      metric: "membershipDays",
+      threshold: 10000,
+      evaluateAt: "notice",
+      afterPercent: "0",
+      definition:
+        "Fixture rule: retain ten percent until ten thousand membership days.",
+    },
     deductPayouts: false,
     deductPenalties: true,
     deductCosts: false,
@@ -227,10 +234,24 @@ async function main() {
   );
   assert.equal(assessment.calculation.repayable, "90.00");
   assert.equal(assessment.calculation.forfeited, "10.00");
-  const frozen = await one('SELECT condition_facts FROM exit_notice WHERE notice_id=$1',[exit.notice_id]);
-  assert.equal(assessment.calculation.conditionResult.actual,frozen.condition_facts.membershipDays);
-  assert.equal(assessment.calculation.conditionResult.evaluatedOn,frozen.condition_facts.evaluatedOn);
-  await assert.rejects(database.query("UPDATE exit_notice SET condition_facts='{}' WHERE notice_id=$1",[exit.notice_id]));
+  const frozen = await one(
+    "SELECT condition_facts FROM exit_notice WHERE notice_id=$1",
+    [exit.notice_id],
+  );
+  assert.equal(
+    assessment.calculation.conditionResult.actual,
+    frozen.condition_facts.membershipDays,
+  );
+  assert.equal(
+    assessment.calculation.conditionResult.evaluatedOn,
+    frozen.condition_facts.evaluatedOn,
+  );
+  await assert.rejects(
+    database.query(
+      "UPDATE exit_notice SET condition_facts='{}' WHERE notice_id=$1",
+      [exit.notice_id],
+    ),
+  );
   const memberDash = await json("/api/dashboard", 3);
   assert.equal(
     memberDash.indicators.find((m) => m.key === "paid").value,
@@ -459,6 +480,127 @@ async function main() {
   await json("/api/dashboard", people.length - 1, "GET", undefined, 403);
   console.log(
     "PASS: platform totals match aggregate drill-through rows; club roles refused; no member or club financial detail disclosed",
+  );
+
+  // Restore the most recent exit as a complete, dual-approved settlement.
+  const latestExit = await one("SELECT * FROM exit_notice WHERE notice_id=$1", [
+    secondExit.notice_id,
+  ]);
+  const beforeRestore = await one(
+    "SELECT sum(cash_amount)::text AS balance FROM cash_ledger_entry WHERE club_id=$1",
+    [clubs[0].club_id],
+  );
+  const reversal = await json(
+    `/api/ledger/${latestExit.forfeiture_entry_id}/reverse`,
+    1,
+    "POST",
+    { reason: "Correct entire exit settlement" },
+    201,
+  );
+  assert.equal(reversal.scope, "Exit settlement");
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/post`,
+    1,
+    "POST",
+    {},
+    422,
+  );
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/decision`,
+    3,
+    "POST",
+    { decision: "approve" },
+    403,
+  );
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/decision`,
+    0,
+    "POST",
+    { decision: "approve" },
+  );
+  const settle = require("../src/modules/ledger/settlements.repo"),
+    realFinish = settle.finish;
+  settle.finish = async () => {
+    throw Error("Injected restoration failure");
+  };
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/post`,
+    1,
+    "POST",
+    {},
+    500,
+  );
+  settle.finish = realFinish;
+  assert.equal(
+    (
+      await one("SELECT standing FROM member WHERE member_id=$1", [
+        people[4].member.member_id,
+      ])
+    ).standing,
+    "Exited",
+  );
+  assert.equal(
+    (
+      await one(
+        "SELECT sum(cash_amount)::text AS balance FROM cash_ledger_entry WHERE club_id=$1",
+        [clubs[0].club_id],
+      )
+    ).balance,
+    beforeRestore.balance,
+  );
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/post`,
+    1,
+    "POST",
+    {},
+  );
+  assert.equal(
+    (
+      await one("SELECT standing FROM member WHERE member_id=$1", [
+        people[4].member.member_id,
+      ])
+    ).standing,
+    "Good standing",
+  );
+  assert.equal(
+    (
+      await one("SELECT settled_amount FROM penalty WHERE penalty_id=$1", [
+        penalty.penalty_id,
+      ])
+    ).settled_amount,
+    "0.00",
+  );
+  assert.equal(
+    (
+      await one("SELECT status FROM exit_notice WHERE notice_id=$1", [
+        secondExit.notice_id,
+      ])
+    ).status,
+    "Approved",
+  );
+  assert.equal(
+    (
+      await one("SELECT queue_position FROM member WHERE member_id=$1", [
+        people[4].member.member_id,
+      ])
+    ).queue_position,
+    1,
+  );
+  assert.equal(
+    (await json("/api/exits", 1)).notices.find(
+      (n) => n.notice_id === secondExit.notice_id,
+    ).reversed,
+    true,
+  );
+  await json(
+    `/api/ledger/reversals/${reversal.request_id}/post`,
+    1,
+    "POST",
+    {},
+    422,
+  );
+  console.log(
+    "PASS: complete exit reversal, zero-cash anchor, two-person approval, injected atomic rollback, penalty/queue/membership restoration, original decision retained.",
   );
   console.log(
     "Completion integration checks passed. No external database was used.",
